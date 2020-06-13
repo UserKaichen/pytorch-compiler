@@ -960,7 +960,17 @@ void initJitScriptBindings(PyObject* module) {
             }
 
             std::cout << "graph:" << std::endl;
-            forward.graph()->dump();
+
+            for (const NameModule& s : self.named_children()) {
+              // We do level + 2, because one level of indentation comes from
+              // 'submodules' scope and the other one goes from a specific
+              // submodule we're printing.
+              std::cout << s.value.dump_to_str(
+                  true,
+                  false,
+                  false,
+                  0) << std::endl;
+            }
             // std::cout << .name() << std::endl;
             // self.dump(true, false, false);
           })
