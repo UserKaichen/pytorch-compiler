@@ -942,7 +942,27 @@ void initJitScriptBindings(PyObject* module) {
       .def(
           "_fun_compile",
           [](Module& self) {
-            self.dump(true, false, false);
+            auto forward = self.get_method("forward");
+            auto graph = forward.graph();
+
+            std::cout << "inputs:" << std::endl;
+            for (auto&& i : graph->inputs()) {
+              std::cout << i->debugName() << std::endl;
+            }
+
+            std::cout << "nodes:" << std::endl;
+            for (auto&& n : graph->nodes()) {
+              std::cout << n->kind().is_prim() << std::endl;
+              std::cout << n->kind().toDisplayString() << std::endl;
+              // for (auto&& v : n->outputs()) {
+              //   std::cout << v->type()-> << std::endl;
+              // }
+            }
+
+            std::cout << "graph:" << std::endl;
+            forward.graph()->dump();
+            // std::cout << .name() << std::endl;
+            // self.dump(true, false, false);
           })
       .def(
           "_create_method_from_trace",
