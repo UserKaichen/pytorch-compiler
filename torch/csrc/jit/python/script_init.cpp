@@ -940,6 +940,11 @@ void initJitScriptBindings(PyObject* module) {
             m.register_attribute(name, type, toIValue(value, type));
           })
       .def(
+          "_fun_compile",
+          [](Module& self) {
+            self.dump(true, false, false);
+          })
+      .def(
           "_create_method_from_trace",
           [](Module& self,
              const std::string& name,
