@@ -1,4 +1,7 @@
 #include <torch/csrc/jit/python/script_init.h>
+#include <torch/csrc/fun/compiler.cpp>
+
+#include <torch/csrc/jit/testing/hooks_for_testing.h>
 
 #include <torch/csrc/Device.h>
 #include <torch/csrc/jit/api/module.h>
@@ -942,36 +945,27 @@ void initJitScriptBindings(PyObject* module) {
       .def(
           "_fun_compile",
           [](Module& self) {
+            auto compiler = new fun::Compiler(self);
             auto forward = self.get_method("forward");
             auto graph = forward.graph();
 
-            std::cout << "inputs:" << std::endl;
-            for (auto&& i : graph->inputs()) {
-              std::cout << i->debugName() << std::endl;
-            }
+            // std::cout << "inputs:" << std::endl;
+            // for (auto&& i : graph->inputs()) {
+            //   std::cout << i->debugName() << std::endl;
+            // }
 
             std::cout << "nodes:" << std::endl;
             for (auto&& n : graph->nodes()) {
-              std::cout << n->kind().is_prim() << std::endl;
               std::cout << n->kind().toDisplayString() << std::endl;
-              // for (auto&& v : n->outputs()) {
-              //   std::cout << v->type()-> << std::endl;
-              // }
-            }
 
-            std::cout << "graph:" << std::endl;
-
-            for (const NameModule& s : self.named_children()) {
-              // We do level + 2, because one level of indentation comes from
-              // 'submodules' scope and the other one goes from a specific
-              // submodule we're printing.
-              std::cout << s.value.dump_to_str(
-                  true,
-                  false,
-                  false,
-                  0) << std::endl;
+              if (n->kind() != prim::GetAttr) {
+                for (auto&& v : n->outputs()) {
+                  for (auto& i : compiler->shape(v))
+                    std::cout << i << ' ';
+                  std::cout << std::endl;
+                }
+              }
             }
-            // std::cout << .name() << std::endl;
             // self.dump(true, false, false);
           })
       .def(
