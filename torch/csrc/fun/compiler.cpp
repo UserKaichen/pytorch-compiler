@@ -29,7 +29,7 @@ class Allocator {
 
 struct Conv2dParameter {
   int in_channels;
-  // int out_channels;
+  int out_channels;
   // int kernel_size;
 };
 
@@ -50,21 +50,6 @@ bool is_module(torch::jit::Node* node, string str) {
   return false;
 }
 
-Conv2dParameter parseConv2d(torch::jit::Node* node) {
-  TORCH_CHECK(
-      is_module(node, "__torch__.torch.nn.modules.conv.Conv2d"),
-      "node to be Conv2d");
-
-  Conv2dParameter param;
-
-  auto value = node->inputs()[1];
-  auto pt = value->type()->cast<TensorType>();
-  TORCH_CHECK(pt);
-  auto sizes = pt->sizes().concrete_sizes().value();
-
-  param.in_channels = sizes[1];
-  return param;
-}
 class Compiler {
  private:
   unordered_map<string, Module> children = {};
@@ -79,6 +64,24 @@ class Compiler {
       children[s.name] = s.value;
     }
   }
+
+  Conv2dParameter parseConv2d(torch::jit::Node* node) {
+    TORCH_CHECK(
+        is_module(node, "__torch__.torch.nn.modules.conv.Conv2d"),
+        "node to be Conv2d");
+
+    Conv2dParameter param;
+
+    auto value = node->inputs()[1];
+    auto pt = value->type()->cast<TensorType>();
+    TORCH_CHECK(pt);
+    auto sizes = pt->sizes().concrete_sizes().value();
+    param.in_channels = sizes[1];
+    param.out_channels = shape(node->output())[1];
+
+    return param;
+  }
+
   std::vector<int64_t> shape(torch::jit::Value* value) {
     auto pt = value->type()->cast<TensorType>();
     TORCH_CHECK(pt);

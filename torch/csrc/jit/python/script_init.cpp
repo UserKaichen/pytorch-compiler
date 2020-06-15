@@ -967,7 +967,8 @@ void initJitScriptBindings(PyObject* module) {
                 }
 
                 if(n->kind() == prim::CallMethod) {
-                  std::cout << "in_channel " << fun::parseConv2d(n).in_channels << std::endl;
+                  auto a = compiler->parseConv2d(n);
+                  std::cout << "in_channel " << a.in_channels << "out_channels " << a.out_channels << std::endl;
                 }
               }
             }
