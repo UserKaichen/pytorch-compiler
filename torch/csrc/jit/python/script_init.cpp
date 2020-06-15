@@ -964,9 +964,13 @@ void initJitScriptBindings(PyObject* module) {
                     std::cout << i << ' ';
                   std::cout << std::endl;
                 }
+
+                if(n->kind() == prim::CallMethod) {
+                  std::cout << "in_channel " << fun::parseConv2d(n).in_channels << std::endl;
+                }
               }
             }
-            // self.dump(true, false, false);
+            self.dump(true, false, false);
           })
       .def(
           "_create_method_from_trace",
