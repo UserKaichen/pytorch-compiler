@@ -30,7 +30,7 @@ class Allocator {
 struct Conv2dParameter {
   int in_channels;
   int out_channels;
-  // int kernel_size;
+  int kernel_size;
 };
 
 bool is_module(torch::jit::Node* node, string str) {
@@ -78,6 +78,15 @@ class Compiler {
     auto sizes = pt->sizes().concrete_sizes().value();
     param.in_channels = sizes[1];
     param.out_channels = shape(node->output())[1];
+
+    const std::string& child_name = node->inputs()[0]->node()->s(attr::name);
+    auto child_graph = children[child_name].get_method("forward").graph();
+    for (auto&& i : children[child_name].named_parameters(false)) {
+      if (i.name == "weight") {
+        param.kernel_size = i.value.sizes()[2];
+        break;
+      }
+    }
 
     return param;
   }
