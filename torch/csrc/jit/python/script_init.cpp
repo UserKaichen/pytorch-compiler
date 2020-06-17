@@ -949,31 +949,32 @@ void initJitScriptBindings(PyObject* module) {
             compiler->allocate();
             auto forward = self.get_method("forward");
             auto graph = forward.graph();
+            compiler->backend();
 
             // std::cout << "inputs:" << std::endl;
             // for (auto&& i : graph->inputs()) {
             //   std::cout << i->debugName() << std::endl;
             // }
 
-            std::cout << "nodes:" << std::endl;
-            for (auto&& n : graph->nodes()) {
-              std::cout << n->kind().toDisplayString() << std::endl;
+            // std::cout << "nodes:" << std::endl;
+            // for (auto&& n : graph->nodes()) {
+            //   std::cout << n->kind().toDisplayString() << std::endl;
 
-              if (n->kind() != prim::GetAttr) {
-                for (auto&& v : n->outputs()) {
-                  for (auto& i : compiler->shape(v))
-                    std::cout << i << ' ';
-                  std::cout << std::endl;
-                }
+            //   if (n->kind() != prim::GetAttr) {
+            //     for (auto&& v : n->outputs()) {
+            //       for (auto& i : compiler->shape(v))
+            //         std::cout << i << ' ';
+            //       std::cout << std::endl;
+            //     }
 
-                if (n->kind() == prim::CallMethod) {
-                  auto a = compiler->parseConv2d(n);
-                  std::cout << "in_channel " << a.in_channels << "out_channels "
-                            << a.out_channels << "kernel_size "
-                            << a.kernel_size << std::endl;
-                }
-              }
-            }
+            //     if (n->kind() == prim::CallMethod) {
+            //       auto a = compiler->parseConv2d(n);
+            //       std::cout << "in_channel " << a.in_channels << "out_channels "
+            //                 << a.out_channels << "kernel_size "
+            //                 << a.kernel_size << std::endl;
+            //     }
+            //   }
+            // }
             self.dump(true, false, false);
           })
       .def(

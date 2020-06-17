@@ -19,7 +19,7 @@ class Allocator {
     std::cout << "dram_capacity: " << dram_capacity << std::endl;
   }
   uint64_t dram_allocate(uint64_t n) {
-    std::cout << "dram_allocate: " << n << std::endl;
+    // std::cout << "dram_allocate: " << n << std::endl;
     uint64_t new_dram_base = dram_base + n;
     TORCH_CHECK(new_dram_base <= dram_capacity, "dram_capacity not enough");
     uint64_t dram_base_bak = dram_base;
@@ -61,7 +61,6 @@ class Compiler {
  public:
   Compiler(Module module) : module(module) {
     for (const NameModule& s : module.named_children()) {
-      std::cout << s.name << std::endl;
       children[s.name] = s.value;
     }
   }
@@ -146,8 +145,51 @@ class Compiler {
 
     // Iterate and print keys and values of unordered_map
     for (const auto& n : address) {
-      std::cout << "Key:[" << n.first->debugName() << "] Value:[" << n.second
+      std::cout << "Value:[" << n.first->debugName() << "] Address:[" << n.second
                 << "]\n";
+    }
+  }
+
+  void node_backend(torch::jit::Node*& node) {
+    auto kind = node->kind();
+    if (kind == prim::GetAttr) {
+      return;
+    }
+
+    if (kind == aten::relu) {
+      node->dump();
+      return;
+    }
+
+    if (kind == prim::CallMethod) {
+      auto type = node->inputs()[0]->type()->cast<c10::ClassType>();
+      TORCH_CHECK(type && type->name());
+
+      static std::regex mangle_re("\\.___torch_mangle_\\d+");
+      auto qualified_name =
+          std::regex_replace(type->name()->qualifiedName(), mangle_re, "");
+
+      if (qualified_name == "__torch__.torch.nn.modules.conv.Conv2d") {
+        std::cout << "LoadW" << std::endl;
+        std::cout << "LoadA x y channel dram_addr stride sram_addr" << std::endl;
+        std::cout << "LoadA x y channel dram_addr stride sram_addr" << std::endl;
+        std::cout << "LoadA x y channel dram_addr stride sram_addr" << std::endl;
+        std::cout << "LoadA x y channel dram_addr stride sram_addr" << std::endl;
+        std::cout << "Mov xx yy cc sram_addr stride" << std::endl;
+        std::cout << "Cal xx yy cc kernel_size conv_stride" << std::endl;
+        std::cout << "Store xx yy cc dram_addr stride" << std::endl;
+        return;
+      }
+
+      TORCH_CHECK(false);
+      return;
+    }
+  }
+
+  void backend() {
+    auto nodes = module.get_method("forward").graph()->nodes();
+    for (auto&& node : nodes) {
+      node_backend(node);
     }
   }
 };
