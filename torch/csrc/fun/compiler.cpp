@@ -15,9 +15,10 @@ class Allocator {
   const uint64_t dram_capacity = ((uint64_t)1) << 32;
 
  public:
-  Allocator() {}
-  uint64_t dram_allocate(uint64_t n) {
+  Allocator() {
     std::cout << "dram_capacity: " << dram_capacity << std::endl;
+  }
+  uint64_t dram_allocate(uint64_t n) {
     std::cout << "dram_allocate: " << n << std::endl;
     uint64_t new_dram_base = dram_base + n;
     TORCH_CHECK(new_dram_base <= dram_capacity, "dram_capacity not enough");
