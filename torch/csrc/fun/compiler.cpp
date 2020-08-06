@@ -168,7 +168,26 @@ class Compiler {
     }
 
     if (kind == aten::relu) {
-      node->dump();
+      std::cout << "relu_en 1" << std::endl;
+      std::cout << "relu_mode 00" << std::endl;
+      std::cout << "relu_param 0_32" << std::endl;
+
+      return;
+    }
+
+    if (kind == aten::leaky_relu) {
+      std::cout << "relu_en 1" << std::endl;
+      std::cout << "relu_mode 10" << std::endl;
+      std::cout << "relu_param 0.01_32" << std::endl;
+
+      return;
+    }
+
+    if (kind == aten::tanh) {
+      std::cout << "relu_en 1" << std::endl;
+      std::cout << "relu_mode 11" << std::endl;
+      std::cout << "relu_param 0_32" << std::endl;
+
       return;
     }
 
