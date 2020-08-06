@@ -37,6 +37,11 @@ struct Conv2dParameter {
   bool transposed;
 };
 
+struct Pool2dParameter {
+  int kernel_size_x;
+  int kernel_size_y;
+};
+
 bool is_module(torch::jit::Node* node, string str) {
   TORCH_CHECK(
       node->kind() == prim::CallMethod,
@@ -98,6 +103,24 @@ class Compiler {
     param.dilation_y = dilation_list[1]->node()->i(attr::value);
 
     param.transposed = _convolution_node->inputs()[6]->node()->i(attr::value);
+
+    return param;
+  }
+
+  Pool2dParameter parsePool2d(torch::jit::Node* node) {
+    TORCH_CHECK(
+        is_module(node, "__torch__.torch.nn.modules.pooling.MaxPool2d"),
+        "node to be MaxPool2d");
+
+    Pool2dParameter param;
+
+    const std::string& child_name = node->inputs()[0]->node()->s(attr::name);
+    auto child_graph = children[child_name].get_method("forward").graph();
+    auto max_pool2d_node = child_graph->outputs()[0]->node();
+    auto kernel_size_list = max_pool2d_node->inputs()[1]->node()->inputs();
+
+    param.kernel_size_x = kernel_size_list[0]->node()->i(attr::value);
+    param.kernel_size_y = kernel_size_list[1]->node()->i(attr::value);
 
     return param;
   }
@@ -215,6 +238,10 @@ class Compiler {
 
       if (qualified_name == "__torch__.torch.nn.modules.pooling.MaxPool2d") {
         std::cout << "Pooling_en 1" << std::endl;
+        auto param = parsePool2d(node);
+        auto size = param.kernel_size_x * param.kernel_size_y;
+        std::cout << "pool_size " << size -1 << std::endl;
+        std::cout << "oprands " << 1.0/size << std::endl;
         return;
       }
 
