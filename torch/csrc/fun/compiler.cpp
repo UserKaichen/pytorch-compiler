@@ -34,6 +34,7 @@ struct Conv2dParameter {
   int kernel_size;
   int dilation_x;
   int dilation_y;
+  bool transposed;
 };
 
 bool is_module(torch::jit::Node* node, string str) {
@@ -69,7 +70,7 @@ class Compiler {
 
   Conv2dParameter parseConv2d(torch::jit::Node* node) {
     TORCH_CHECK(
-        is_module(node, "__torch__.torch.nn.modules.conv.Conv2d"),
+        is_module(node, "__torch__.torch.nn.modules.conv.Conv2d") || is_module(node, "__torch__.torch.nn.modules.conv.ConvTranspose2d"),
         "node to be Conv2d");
 
     Conv2dParameter param;
@@ -95,6 +96,8 @@ class Compiler {
 
     param.dilation_x = dilation_list[0]->node()->i(attr::value);
     param.dilation_y = dilation_list[1]->node()->i(attr::value);
+
+    param.transposed = _convolution_node->inputs()[6]->node()->i(attr::value);
 
     return param;
   }
@@ -177,16 +180,17 @@ class Compiler {
       auto qualified_name =
           std::regex_replace(type->name()->qualifiedName(), mangle_re, "");
 
-      if (qualified_name == "__torch__.torch.nn.modules.conv.Conv2d") {
-        parseConv2d(node);
-        std::cout << "LoadW" << std::endl;
-        std::cout << "LoadA x y channel dram_addr stride sram_addr" << std::endl;
-        std::cout << "LoadA x y channel dram_addr stride sram_addr" << std::endl;
-        std::cout << "LoadA x y channel dram_addr stride sram_addr" << std::endl;
-        std::cout << "LoadA x y channel dram_addr stride sram_addr" << std::endl;
-        std::cout << "Mov xx yy cc sram_addr stride" << std::endl;
-        std::cout << "Cal xx yy cc kernel_size conv_stride" << std::endl;
-        std::cout << "Store xx yy cc dram_addr stride" << std::endl;
+      if (qualified_name == "__torch__.torch.nn.modules.conv.Conv2d" || qualified_name== "__torch__.torch.nn.modules.conv.ConvTranspose2d") {
+        auto param = parseConv2d(node);
+
+        std::cout << "conv_type ";
+        if(param.transposed) std::cout << "10";
+        else {
+          if(param.dilation_x ==1 && param.dilation_y ==1) std::cout << "00";
+          else std::cout << "01";
+        }
+        std::cout << std::endl;
+        
         return;
       }
 
