@@ -32,6 +32,8 @@ struct Conv2dParameter {
   int in_channels;
   int out_channels;
   int kernel_size;
+  int dilation_x;
+  int dilation_y;
 };
 
 bool is_module(torch::jit::Node* node, string str) {
@@ -80,13 +82,19 @@ class Compiler {
     param.out_channels = shape(node->output())[1];
 
     const std::string& child_name = node->inputs()[0]->node()->s(attr::name);
-    auto child_graph = children[child_name].get_method("forward").graph();
     for (auto&& i : children[child_name].named_parameters(false)) {
       if (i.name == "weight") {
         param.kernel_size = i.value.sizes()[2];
         break;
       }
     }
+
+    auto child_graph = children[child_name].get_method("forward").graph();
+    auto _convolution_node = child_graph->outputs()[0]->node();
+    auto dilation_list = _convolution_node->inputs()[5]->node()->inputs();
+
+    param.dilation_x = dilation_list[0]->node()->i(attr::value);
+    param.dilation_y = dilation_list[1]->node()->i(attr::value);
 
     return param;
   }
@@ -170,6 +178,7 @@ class Compiler {
           std::regex_replace(type->name()->qualifiedName(), mangle_re, "");
 
       if (qualified_name == "__torch__.torch.nn.modules.conv.Conv2d") {
+        parseConv2d(node);
         std::cout << "LoadW" << std::endl;
         std::cout << "LoadA x y channel dram_addr stride sram_addr" << std::endl;
         std::cout << "LoadA x y channel dram_addr stride sram_addr" << std::endl;
@@ -180,6 +189,13 @@ class Compiler {
         std::cout << "Store xx yy cc dram_addr stride" << std::endl;
         return;
       }
+
+      if (qualified_name == "__torch__.torch.nn.modules.pooling.MaxPool2d") {
+        std::cout << "Pooling_en 1" << std::endl;
+        return;
+      }
+
+      std::cout << qualified_name << std::endl;
 
       TORCH_CHECK(false);
       return;
