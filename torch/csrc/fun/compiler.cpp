@@ -201,10 +201,14 @@ class Compiler {
     }
   }
 
-  void allocateConv2dWeight(torch::jit::Value* value, Conv2dParameter param) {
-    address[value] = allocator->dram_allocate(
+  uint64_t allocateConv2dWeight(
+      torch::jit::Value* value,
+      Conv2dParameter param) {
+    auto weight_address = allocator->dram_allocate(
         param.kernel_size_x * param.kernel_size_y * param.in_channels *
         param.out_channels);
+    address[value] = weight_address;
+    return weight_address;
   }
 
   void allocateActivation() {
@@ -263,9 +267,24 @@ class Compiler {
       if (qualified_name == "__torch__.torch.nn.modules.conv.Conv2d" ||
           qualified_name == "__torch__.torch.nn.modules.conv.ConvTranspose2d") {
         auto param = parseConv2d(node);
-        allocateConv2dWeight(GetAttrValue, param);
+        auto weight_address = allocateConv2dWeight(GetAttrValue, param);
+
+        std::cout << "weight_addr " << weight_address << std::endl;
 
         auto knifeResult = NNKnife();
+
+        for (int kp = 0; kp < knifeResult.Kp; kp++) {
+          for (int yp = 0; yp < knifeResult.Yp; yp++) {
+            int Chiplet_num = kp * knifeResult.Kp + yp;
+            std::cout << "Chiplet_num " << Chiplet_num << std::endl;
+          }
+        }
+
+        std::cout << "weight_str "
+                  << ceil(
+                         param.kernel_size_x * param.kernel_size_y *
+                         param.in_channels / 8.0)
+                  << std::endl;
 
         std::cout << "conv_type ";
         if (param.transposed)
@@ -292,13 +311,25 @@ class Compiler {
 
         std::cout << "Weight_bit " << 0 << std::endl;
         std::cout << "weight_updata_n " << 0 << std::endl;
-        std::cout << "act_tile_str " << 0 << std::endl; // todo: the first Conv2d should be 1
+        std::cout << "act_tile_str " << 0
+                  << std::endl; // todo: the first Conv2d should be 1
 
         std::cout << "Kernel_str ";
         if (param.stride_x == 1 && param.stride_y == 1)
           std::cout << "00";
         else if (param.stride_x == 2 && param.stride_y == 2)
           std::cout << "01";
+        std::cout << std::endl;
+
+        std::cout << "Tile_mode ";
+        if (knifeResult.Kc == 8)
+          std::cout << "00";
+        else if (knifeResult.Kc == 4)
+          std::cout << "01";
+        else if (knifeResult.Kc == 2)
+          std::cout << "10";
+        else if (knifeResult.Kc == 1)
+          std::cout << "11";
         std::cout << std::endl;
 
         return;
