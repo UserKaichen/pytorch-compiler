@@ -31,7 +31,8 @@ class Allocator {
 struct Conv2dParameter {
   int in_channels;
   int out_channels;
-  int kernel_size;
+  int kernel_size_x;
+  int kernel_size_y;
   int dilation_x;
   int dilation_y;
   bool transposed;
@@ -75,7 +76,8 @@ class Compiler {
 
   Conv2dParameter parseConv2d(torch::jit::Node* node) {
     TORCH_CHECK(
-        is_module(node, "__torch__.torch.nn.modules.conv.Conv2d") || is_module(node, "__torch__.torch.nn.modules.conv.ConvTranspose2d"),
+        is_module(node, "__torch__.torch.nn.modules.conv.Conv2d") ||
+            is_module(node, "__torch__.torch.nn.modules.conv.ConvTranspose2d"),
         "node to be Conv2d");
 
     Conv2dParameter param;
@@ -90,7 +92,8 @@ class Compiler {
     const std::string& child_name = node->inputs()[0]->node()->s(attr::name);
     for (auto&& i : children[child_name].named_parameters(false)) {
       if (i.name == "weight") {
-        param.kernel_size = i.value.sizes()[2];
+        param.kernel_size_x = i.value.sizes()[2];
+        param.kernel_size_y = i.value.sizes()[3];
         break;
       }
     }
@@ -161,6 +164,8 @@ class Compiler {
     address[value] = allocator->dram_allocate(n);
   }
 
+
+
   void allocateNode(torch::jit::Node* node) {
     if (node->kind() == prim::GetAttr)
       return;
@@ -179,8 +184,8 @@ class Compiler {
 
     // Iterate and print keys and values of unordered_map
     for (const auto& n : address) {
-      std::cout << "Value:[" << n.first->debugName() << "] Address:[" << n.second
-                << "]\n";
+      std::cout << "Value:[" << n.first->debugName() << "] Address:["
+                << n.second << "]\n";
     }
   }
 
@@ -222,17 +227,21 @@ class Compiler {
       auto qualified_name =
           std::regex_replace(type->name()->qualifiedName(), mangle_re, "");
 
-      if (qualified_name == "__torch__.torch.nn.modules.conv.Conv2d" || qualified_name== "__torch__.torch.nn.modules.conv.ConvTranspose2d") {
+      if (qualified_name == "__torch__.torch.nn.modules.conv.Conv2d" ||
+          qualified_name == "__torch__.torch.nn.modules.conv.ConvTranspose2d") {
         auto param = parseConv2d(node);
 
         std::cout << "conv_type ";
-        if(param.transposed) std::cout << "10";
+        if (param.transposed)
+          std::cout << "10";
         else {
-          if(param.dilation_x ==1 && param.dilation_y ==1) std::cout << "00";
-          else std::cout << "01";
+          if (param.dilation_x == 1 && param.dilation_y == 1)
+            std::cout << "00";
+          else
+            std::cout << "01";
         }
         std::cout << std::endl;
-        
+
         return;
       }
 
@@ -240,8 +249,8 @@ class Compiler {
         std::cout << "Pooling_en 1" << std::endl;
         auto param = parsePool2d(node);
         auto size = param.kernel_size_x * param.kernel_size_y;
-        std::cout << "pool_size " << size -1 << std::endl;
-        std::cout << "oprands " << 1.0/size << std::endl;
+        std::cout << "pool_size " << size - 1 << std::endl;
+        std::cout << "oprands " << 1.0 / size << std::endl;
         return;
       }
 
