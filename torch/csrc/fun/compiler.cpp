@@ -164,8 +164,6 @@ class Compiler {
     address[value] = allocator->dram_allocate(n);
   }
 
-
-
   void allocateNode(torch::jit::Node* node) {
     if (node->kind() == prim::GetAttr)
       return;
@@ -176,13 +174,20 @@ class Compiler {
     }
   }
 
-  void allocate() {
+  void allocateConv2dWeight(torch::jit::Value* value, Conv2dParameter param) {
+    address[value] = allocator->dram_allocate(
+        param.kernel_size_x * param.kernel_size_y * param.in_channels *
+        param.out_channels);
+  }
+
+  void allocateActivation() {
     auto nodes = module.get_method("forward").graph()->nodes();
     for (auto&& node : nodes) {
       allocateNode(node);
     }
+  }
 
-    // Iterate and print keys and values of unordered_map
+  void printAddress(){
     for (const auto& n : address) {
       std::cout << "Value:[" << n.first->debugName() << "] Address:["
                 << n.second << "]\n";
@@ -220,7 +225,8 @@ class Compiler {
     }
 
     if (kind == prim::CallMethod) {
-      auto type = node->inputs()[0]->type()->cast<c10::ClassType>();
+      auto GetAttrValue = node->inputs()[0];
+      auto type = GetAttrValue->type()->cast<c10::ClassType>();
       TORCH_CHECK(type && type->name());
 
       static std::regex mangle_re("\\.___torch_mangle_\\d+");
@@ -230,6 +236,7 @@ class Compiler {
       if (qualified_name == "__torch__.torch.nn.modules.conv.Conv2d" ||
           qualified_name == "__torch__.torch.nn.modules.conv.ConvTranspose2d") {
         auto param = parseConv2d(node);
+        allocateConv2dWeight(GetAttrValue, param);
 
         std::cout << "conv_type ";
         if (param.transposed)

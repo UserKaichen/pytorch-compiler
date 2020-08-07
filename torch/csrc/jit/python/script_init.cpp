@@ -946,10 +946,11 @@ void initJitScriptBindings(PyObject* module) {
           "_fun_compile",
           [](Module& self) {
             auto compiler = new fun::Compiler(self);
-            compiler->allocate();
+            compiler->allocateActivation();
             auto forward = self.get_method("forward");
             auto graph = forward.graph();
             compiler->backend();
+            compiler->printAddress();
 
             // std::cout << "inputs:" << std::endl;
             // for (auto&& i : graph->inputs()) {
@@ -975,7 +976,7 @@ void initJitScriptBindings(PyObject* module) {
             //     }
             //   }
             // }
-            // self.dump(true, false, false);
+            self.dump(true, false, false);
           })
       .def(
           "_create_method_from_trace",
