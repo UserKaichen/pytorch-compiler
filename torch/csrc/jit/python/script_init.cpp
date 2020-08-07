@@ -976,7 +976,7 @@ void initJitScriptBindings(PyObject* module) {
             //     }
             //   }
             // }
-            self.dump(true, false, false);
+            // self.dump(true, false, false);
           })
       .def(
           "_create_method_from_trace",

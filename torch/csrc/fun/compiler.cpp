@@ -33,6 +33,8 @@ struct Conv2dParameter {
   int out_channels;
   int kernel_size_x;
   int kernel_size_y;
+  int stride_x;
+  int stride_y;
   int dilation_x;
   int dilation_y;
   bool transposed;
@@ -42,6 +44,22 @@ struct Pool2dParameter {
   int kernel_size_x;
   int kernel_size_y;
 };
+
+struct NNKnifeResult {
+  int of_chiplet;
+  int Kp;
+  int Yp;
+  int Kc;
+};
+
+NNKnifeResult NNKnife() {
+  NNKnifeResult result;
+  result.of_chiplet = 4;
+  result.Kc = 4;
+  result.Kp = 1;
+  result.Yp = 4;
+  return result;
+}
 
 bool is_module(torch::jit::Node* node, string str) {
   TORCH_CHECK(
@@ -100,10 +118,14 @@ class Compiler {
 
     auto child_graph = children[child_name].get_method("forward").graph();
     auto _convolution_node = child_graph->outputs()[0]->node();
-    auto dilation_list = _convolution_node->inputs()[5]->node()->inputs();
 
+    auto dilation_list = _convolution_node->inputs()[5]->node()->inputs();
     param.dilation_x = dilation_list[0]->node()->i(attr::value);
     param.dilation_y = dilation_list[1]->node()->i(attr::value);
+
+    auto stride_list = _convolution_node->inputs()[3]->node()->inputs();
+    param.stride_x = stride_list[0]->node()->i(attr::value);
+    param.stride_y = stride_list[1]->node()->i(attr::value);
 
     param.transposed = _convolution_node->inputs()[6]->node()->i(attr::value);
 
@@ -187,7 +209,7 @@ class Compiler {
     }
   }
 
-  void printAddress(){
+  void printAddress() {
     for (const auto& n : address) {
       std::cout << "Value:[" << n.first->debugName() << "] Address:["
                 << n.second << "]\n";
@@ -238,6 +260,8 @@ class Compiler {
         auto param = parseConv2d(node);
         allocateConv2dWeight(GetAttrValue, param);
 
+        auto knifeResult = NNKnife();
+
         std::cout << "conv_type ";
         if (param.transposed)
           std::cout << "10";
@@ -247,6 +271,29 @@ class Compiler {
           else
             std::cout << "01";
         }
+        std::cout << std::endl;
+
+        std::cout << "Chiplet_mode ";
+        if (knifeResult.Kp == 1 && knifeResult.Yp == 4)
+          std::cout << "00";
+        else if (knifeResult.Kp == 4 && knifeResult.Yp == 1)
+          std::cout << "10";
+        std::cout << std::endl;
+
+        std::cout << "Kernel_num "
+                  << param.kernel_size_x * param.kernel_size_y - 1 << std::endl;
+        std::cout << "Kernel_width " << param.kernel_size_x - 1 << std::endl;
+        std::cout << "Kernel_height " << param.kernel_size_y - 1 << std::endl;
+
+        std::cout << "Weight_bit " << 0 << std::endl;
+        std::cout << "weight_updata_n " << 0 << std::endl;
+        std::cout << "act_tile_str " << 0 << std::endl; // todo: the first Conv2d should be 1
+
+        std::cout << "Kernel_str ";
+        if (param.stride_x == 1 && param.stride_y == 1)
+          std::cout << "00";
+        else if (param.stride_x == 2 && param.stride_y == 2)
+          std::cout << "01";
         std::cout << std::endl;
 
         return;
