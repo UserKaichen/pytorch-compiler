@@ -50,6 +50,11 @@ struct NNKnifeResult {
   int Kp;
   int Yp;
   int Kc;
+  int act_tile_hor;
+  int act_tile_chl;
+  int act_str_line;
+  int act_str_chl;
+  int act_tile_ver;
 };
 
 NNKnifeResult NNKnife() {
