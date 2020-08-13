@@ -3,6 +3,7 @@
 #include <unordered_map>
 
 #include <torch/csrc/jit/api/module.h>
+#include "./address.cpp"
 
 using namespace std;
 using namespace torch::jit;
@@ -19,7 +20,6 @@ class Allocator {
     std::cout << "dram_capacity: " << dram_capacity << std::endl;
   }
   uint64_t dram_allocate(uint64_t n) {
-    // std::cout << "dram_allocate: " << n << std::endl;
     uint64_t new_dram_base = dram_base + n;
     TORCH_CHECK(new_dram_base <= dram_capacity, "dram_capacity not enough");
     uint64_t dram_base_bak = dram_base;
@@ -47,6 +47,9 @@ struct Pool2dParameter {
 
 struct NNKnifeResult {
   int of_chiplet;
+  int Y2;
+  int X2;
+  int K2;
   int Kp;
   int Yp;
   int Kc;
@@ -267,16 +270,39 @@ class Compiler {
       if (qualified_name == "__torch__.torch.nn.modules.conv.Conv2d" ||
           qualified_name == "__torch__.torch.nn.modules.conv.ConvTranspose2d") {
         auto param = parseConv2d(node);
+
+        auto total_workload_out_shape = shape(node->output());
+        auto input_shape = shape(node->inputs()[1]);
+        auto total_workload_in =
+            Workload{param.in_channels, input_shape[2], input_shape[3]};
+        auto knifeResult = NNKnife();
+
+        std::vector<int64_t> chiplet_workload_out_shape(
+            total_workload_out_shape.size());
+        chiplet_workload_out_shape[0] = total_workload_out_shape[0];
+        chiplet_workload_out_shape[1] =
+            total_workload_out_shape[1] / knifeResult.Kp;
+        chiplet_workload_out_shape[2] =
+            total_workload_out_shape[2] / knifeResult.Yp;
+        chiplet_workload_out_shape[3] = total_workload_out_shape[3];
+
         auto weight_address = allocateConv2dWeight(GetAttrValue, param);
 
         std::cout << "weight_addr " << weight_address << std::endl;
 
-        auto knifeResult = NNKnife();
-
-        for (int kp = 0; kp < knifeResult.Kp; kp++) {
-          for (int yp = 0; yp < knifeResult.Yp; yp++) {
-            int Chiplet_num = kp * knifeResult.Kp + yp;
+        for (uint64_t kp = 0; kp < knifeResult.Kp; kp++) {
+          for (uint64_t yp = 0; yp < knifeResult.Yp; yp++) {
+            uint64_t Chiplet_num = kp * knifeResult.Kp + yp;
             std::cout << "Chiplet_num " << Chiplet_num << std::endl;
+
+            for (uint64_t y2 = 0; y2 < knifeResult.Y2; y2++) {
+              for (uint64_t x2 = 0; x2 < knifeResult.X2; x2++) {
+                for (uint64_t k2 = 0; k2 < knifeResult.K2; k2++) {
+                  exit(0);
+                  // todo
+                }
+              }
+            }
           }
         }
 
