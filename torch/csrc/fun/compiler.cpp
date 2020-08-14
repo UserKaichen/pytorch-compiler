@@ -228,6 +228,48 @@ class Compiler {
     }
   }
 
+  Workload get_chiplet_workload(
+      Workload total_workload,
+      uint64_t Yp,
+      uint64_t Kp) {
+    return Workload{
+        total_workload.C / Kp, total_workload.H / Yp, total_workload.W};
+  }
+
+  Workload get_chiplet_sub_workload(
+      Workload chiplet_workload,
+      uint64_t Y2,
+      uint64_t X2,
+      uint64_t K2) {
+    return Workload{chiplet_workload.C / K2,
+                    chiplet_workload.H / Y2,
+                    chiplet_workload.W / X2};
+  }
+
+  Point get_chiplet_out(
+      Workload chiplet_sub_workload,
+      uint64_t y2,
+      uint64_t x2,
+      uint64_t k2) {
+    return Point{chiplet_sub_workload.C * k2,
+                 chiplet_sub_workload.H * y2,
+                 chiplet_sub_workload.W * x2};
+  }
+
+  Point chiplet_out_to_total_out(
+      Workload chiplet_workload,
+      uint64_t kp,
+      uint64_t yp,
+      Point point_out) {
+    return Point{chiplet_workload.C * kp + point_out.C,
+                 chiplet_workload.H * yp + point_out.Y,
+                 point_out.X};
+  }
+
+  Point out_to_in(Point point_out, uint64_t stride_x, uint64_t stride_y) {
+    return Point{0, point_out.Y * stride_y, point_out.X * stride_x};
+  }
+
   void node_backend(torch::jit::Node*& node) {
     auto kind = node->kind();
     if (kind == prim::GetAttr) {
@@ -272,19 +314,19 @@ class Compiler {
         auto param = parseConv2d(node);
 
         auto total_workload_out_shape = shape(node->output());
-        auto input_shape = shape(node->inputs()[1]);
-        auto total_workload_in =
-            Workload{param.in_channels, input_shape[2], input_shape[3]};
+        auto total_workload_out = Workload{total_workload_out_shape[1],
+                                           total_workload_out_shape[2],
+                                           total_workload_out_shape[3]};
+
+        auto total_workload_in_shape = shape(node->inputs()[1]);
+        auto total_workload_in = Workload{total_workload_in_shape[1],
+                                          total_workload_in_shape[2],
+                                          total_workload_in_shape[3]};
+
         auto knifeResult = NNKnife();
 
-        std::vector<int64_t> chiplet_workload_out_shape(
-            total_workload_out_shape.size());
-        chiplet_workload_out_shape[0] = total_workload_out_shape[0];
-        chiplet_workload_out_shape[1] =
-            total_workload_out_shape[1] / knifeResult.Kp;
-        chiplet_workload_out_shape[2] =
-            total_workload_out_shape[2] / knifeResult.Yp;
-        chiplet_workload_out_shape[3] = total_workload_out_shape[3];
+        auto chiplet_workload_out = get_chiplet_workload(
+            total_workload_out, knifeResult.Yp, knifeResult.Kp);
 
         auto weight_address = allocateConv2dWeight(GetAttrValue, param);
 
@@ -298,8 +340,28 @@ class Compiler {
             for (uint64_t y2 = 0; y2 < knifeResult.Y2; y2++) {
               for (uint64_t x2 = 0; x2 < knifeResult.X2; x2++) {
                 for (uint64_t k2 = 0; k2 < knifeResult.K2; k2++) {
-                  exit(0);
-                  // todo
+                  auto chiplet_sub_workload_out = get_chiplet_sub_workload(
+                      chiplet_workload_out, y2, x2, k2);
+                  auto chiplet_out =
+                      get_chiplet_out(chiplet_sub_workload_out, y2, x2, k2);
+                  auto total_out = chiplet_out_to_total_out(
+                      chiplet_workload_out, kp, yp, chiplet_out);
+                  auto total_in =
+                      out_to_in(total_out, param.stride_x, param.stride_y);
+                  uint64_t address;
+                  if ("input.1" == node->inputs()[1]->debugName()) {
+                    address = input_to_address(
+                        total_workload_in, total_in.C, total_in.Y, total_in.X);
+                  } else {
+                    address = activition_to_address(
+                        total_workload_in,
+                        knifeResult.Kp,
+                        total_in.C,
+                        total_in.Y,
+                        total_in.X);
+                  }
+
+                  std::cout << "act_addr " << address << std::endl;
                 }
               }
             }

@@ -22,6 +22,12 @@ uint64_t align(uint64_t x, int align_factor) {
     return x;
 }
 
+struct Point {
+  uint64_t C;
+  uint64_t Y;
+  uint64_t X;
+};
+
 uint64_t activition_to_address(
     Workload workload,
     uint64_t Kp,
