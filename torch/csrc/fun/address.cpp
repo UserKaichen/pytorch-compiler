@@ -15,7 +15,7 @@ struct Workload {
 };
 
 uint64_t align(uint64_t x, int align_factor) {
-  auto div_result = div(x, align_factor);
+  auto div_result = lldiv(x, align_factor);
   if (div_result.rem)
     return (div_result.quot + 1) * align_factor;
   else
@@ -93,7 +93,7 @@ uint64_t input_to_address(
 
   workload.C = align(workload.C, align_factor);
 
-  auto div_result = div(workload.H, 2);
+  auto div_result = lldiv(workload.H, 2);
   uint64_t half_total_height = div_result.quot + (div_result.rem ? 1 : 0);
 
   if (H >= half_total_height) {

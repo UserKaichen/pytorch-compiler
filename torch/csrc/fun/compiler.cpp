@@ -63,6 +63,9 @@ struct NNKnifeResult {
 NNKnifeResult NNKnife() {
   NNKnifeResult result;
   result.of_chiplet = 4;
+  result.Y2 = 2;
+  result.X2 = 4;
+  result.K2 = 1;
   result.Kc = 4;
   result.Kp = 1;
   result.Yp = 4;
@@ -228,12 +231,20 @@ class Compiler {
     }
   }
 
+  uint64_t ceil_div(uint64_t numerator, uint64_t denominator) {
+    auto res = lldiv(numerator, denominator);
+    return res.rem ? (res.quot + 1) : res.quot;
+  }
+
   Workload get_chiplet_workload(
       Workload total_workload,
       uint64_t Yp,
       uint64_t Kp) {
-    return Workload{
-        total_workload.C / Kp, total_workload.H / Yp, total_workload.W};
+    assert(Kp != 0);
+    assert(Yp != 0);
+    return Workload{ceil_div(total_workload.C, Kp),
+                    ceil_div(total_workload.H, Yp),
+                    total_workload.W};
   }
 
   Workload get_chiplet_sub_workload(
@@ -241,9 +252,12 @@ class Compiler {
       uint64_t Y2,
       uint64_t X2,
       uint64_t K2) {
-    return Workload{chiplet_workload.C / K2,
-                    chiplet_workload.H / Y2,
-                    chiplet_workload.W / X2};
+    assert(K2 != 0);
+    assert(Y2 != 0);
+    assert(X2 != 0);
+    return Workload{ceil_div(chiplet_workload.C, K2),
+                    ceil_div(chiplet_workload.H, Y2),
+                    ceil_div(chiplet_workload.W, X2)};
   }
 
   Point get_chiplet_out(
@@ -327,10 +341,15 @@ class Compiler {
 
         auto chiplet_workload_out = get_chiplet_workload(
             total_workload_out, knifeResult.Yp, knifeResult.Kp);
-
+        auto chiplet_sub_workload_out = get_chiplet_sub_workload(
+            chiplet_workload_out,
+            knifeResult.Y2,
+            knifeResult.X2,
+            knifeResult.K2);
         auto weight_address = allocateConv2dWeight(GetAttrValue, param);
 
-        std::cout << "weight_addr " << weight_address << std::endl;
+        // std::cout << "weight_addr " << weight_address << std::endl;
+        std::cout << "Start" << std::endl;
 
         for (uint64_t kp = 0; kp < knifeResult.Kp; kp++) {
           for (uint64_t yp = 0; yp < knifeResult.Yp; yp++) {
@@ -340,8 +359,6 @@ class Compiler {
             for (uint64_t y2 = 0; y2 < knifeResult.Y2; y2++) {
               for (uint64_t x2 = 0; x2 < knifeResult.X2; x2++) {
                 for (uint64_t k2 = 0; k2 < knifeResult.K2; k2++) {
-                  auto chiplet_sub_workload_out = get_chiplet_sub_workload(
-                      chiplet_workload_out, y2, x2, k2);
                   auto chiplet_out =
                       get_chiplet_out(chiplet_sub_workload_out, y2, x2, k2);
                   auto total_out = chiplet_out_to_total_out(
@@ -349,7 +366,7 @@ class Compiler {
                   auto total_in =
                       out_to_in(total_out, param.stride_x, param.stride_y);
                   uint64_t address;
-                  if ("input.1" == node->inputs()[1]->debugName()) {
+                  if ("input" == node->inputs()[1]->debugName()) {
                     address = input_to_address(
                         total_workload_in, total_in.C, total_in.Y, total_in.X);
                   } else {
@@ -367,6 +384,8 @@ class Compiler {
             }
           }
         }
+
+        exit(0);
 
         std::cout << "weight_str "
                   << ceil(
