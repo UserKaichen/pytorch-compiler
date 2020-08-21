@@ -946,7 +946,7 @@ void initJitScriptBindings(PyObject* module) {
           "_fun_compile",
           [](Module& self) {
             auto compiler = new fun::Compiler(self);
-            compiler->allocateActivation();
+            compiler->allocateActivationAndInput();
             auto forward = self.get_method("forward");
             auto graph = forward.graph();
             compiler->backend();

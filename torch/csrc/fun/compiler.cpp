@@ -217,8 +217,11 @@ class Compiler {
     return weight_address;
   }
 
-  void allocateActivation() {
-    auto nodes = module.get_method("forward").graph()->nodes();
+  void allocateActivationAndInput() {
+    auto graph = module.get_method("forward").graph();
+
+    allocateValue(graph->inputs()[1]);
+    auto nodes = graph->nodes();
     for (auto&& node : nodes) {
       allocateNode(node);
     }
@@ -316,15 +319,8 @@ class Compiler {
 
     if (kind == prim::CallMethod) {
       auto GetAttrValue = node->inputs()[0];
-      auto type = GetAttrValue->type()->cast<c10::ClassType>();
-      TORCH_CHECK(type && type->name());
-
-      static std::regex mangle_re("\\.___torch_mangle_\\d+");
-      auto qualified_name =
-          std::regex_replace(type->name()->qualifiedName(), mangle_re, "");
-
-      if (qualified_name == "__torch__.torch.nn.modules.conv.Conv2d" ||
-          qualified_name == "__torch__.torch.nn.modules.conv.ConvTranspose2d") {
+      if (is_module(node, "__torch__.torch.nn.modules.conv.Conv2d") ||
+            is_module(node, "__torch__.torch.nn.modules.conv.ConvTranspose2d")) {
         auto param = parseConv2d(node);
 
         auto total_workload_out_shape = shape(node->output());
@@ -365,20 +361,25 @@ class Compiler {
                       chiplet_workload_out, kp, yp, chiplet_out);
                   auto total_in =
                       out_to_in(total_out, param.stride_x, param.stride_y);
-                  uint64_t address;
+                  uint64_t act_addr;
                   if ("input" == node->inputs()[1]->debugName()) {
-                    address = input_to_address(
-                        total_workload_in, total_in.C, total_in.Y, total_in.X);
+                    act_addr = input_to_address(
+                        total_workload_in, total_in.C, total_in.Y, total_in.X, address[node->inputs()[1]]);
                   } else {
-                    address = activition_to_address(
+                    act_addr = activition_to_address(
                         total_workload_in,
                         knifeResult.Kp,
                         total_in.C,
                         total_in.Y,
-                        total_in.X);
+                        total_in.X, address[node->inputs()[1]]);
                   }
-
-                  std::cout << "act_addr " << address << std::endl;
+                  std::cout << "out_addr " << activition_to_address(
+                        total_workload_out,
+                        knifeResult.Kp,
+                        total_in.C,
+                        total_in.Y,
+                        total_in.X, address[node->output()]) << std::endl;
+                  std::cout << "act_addr " << act_addr << std::endl;
                 }
               }
             }
@@ -442,7 +443,7 @@ class Compiler {
         return;
       }
 
-      if (qualified_name == "__torch__.torch.nn.modules.pooling.MaxPool2d") {
+      if (is_module(node, "__torch__.torch.nn.modules.pooling.MaxPool2d")) {
         std::cout << "Pooling_en 1" << std::endl;
         auto param = parsePool2d(node);
         auto size = param.kernel_size_x * param.kernel_size_y;
@@ -451,7 +452,10 @@ class Compiler {
         return;
       }
 
-      std::cout << qualified_name << std::endl;
+      
+      auto type = GetAttrValue->type()->cast<c10::ClassType>();
+      TORCH_CHECK(type && type->name());
+      std::cout << type->name()->qualifiedName() << std::endl;
 
       TORCH_CHECK(false);
       return;
