@@ -1,4 +1,7 @@
 #include <torch/csrc/jit/python/script_init.h>
+#include <torch/csrc/fun/compiler.cpp>
+
+#include <torch/csrc/jit/testing/hooks_for_testing.h>
 
 #include <torch/csrc/Device.h>
 #include <torch/csrc/jit/api/module.h>
@@ -938,6 +941,37 @@ void initJitScriptBindings(PyObject* module) {
              TypePtr type,
              py::handle value) {
             m.register_attribute(name, type, toIValue(value, type));
+          })
+      .def(
+          "_fun_compile",
+          [](Module& self) {
+            auto compiler = new fun::Compiler(self);
+            auto forward = self.get_method("forward");
+            auto graph = forward.graph();
+            compiler->allocateActivationAndInput();
+            compiler->backend();
+#if 0
+            //compiler->printAddress();
+            //muse-v3 used
+            std::cout << "inputs:" << std::endl;
+            for (auto&& i : graph->inputs()) {
+              std::cout << i->debugName() << std::endl;
+            }
+
+            std::cout << "nodes:" << std::endl;
+            for (auto&& n : graph->nodes()) {
+              std::cout << n->kind().toDisplayString() << std::endl;
+
+              if (n->kind() != prim::GetAttr) {
+                for (auto&& v : n->outputs()) {
+                  for (auto& i : compiler->shape(v))
+                    std::cout << i << ' ';
+                  std::cout << std::endl;
+                }
+              }
+            }
+            self.dump(true, false, false);
+#endif
           })
       .def(
           "_create_method_from_trace",
