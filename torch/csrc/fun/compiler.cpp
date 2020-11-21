@@ -66,6 +66,13 @@ struct LinearParameter {
   int out_features_y;
 };
 
+struct PaddingParameter {
+  int dim_x;
+  int dim_y;
+  int dim_z;
+  int dim_w;
+};
+
 struct Pool2dParameter {
   int kernel_size_x;
   int kernel_size_y;
@@ -215,6 +222,19 @@ class Compiler {
     param.stride_y = stride_list[1]->node()->i(attr::value);
 
     param.transposed = _convolution_node->inputs()[6]->node()->i(attr::value);
+
+    return param;
+  }
+
+  PaddingParameter parseCat(torch::jit::Node* node) {
+    PaddingParameter param;
+   
+    auto result_shape = shape(node->outputs()[0]);
+    
+    param.dim_x = result_shape[0];
+    param.dim_y = result_shape[1];
+    param.dim_z = result_shape[2];
+    param.dim_w = result_shape[3];
 
     return param;
   }
@@ -460,6 +480,11 @@ class Compiler {
   void node_backend(torch::jit::Node*& node) {
     auto kind = node->kind();
     if (kind == prim::GetAttr) {
+      return;
+    }
+
+    if (kind == aten::cat) {
+      parseCat(node);
       return;
     }
 
