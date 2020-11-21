@@ -1,0 +1,92 @@
+layer_num:1 layer type:conv1
+Conv param:
+in_channels=3 out_channels=64 kernel_size_x=3 kernel_size_y=3 stride_x=1 stride_y=1 dilation_x=1 dilation_y=1 transposed=0 weight=3 feature_map_size_x=224 feature_map_size_y=224
+BN param: dimension 64
+relu_param: 0_32 relu_en 1 relu_mode 00
+layer_num:2 layer type:conv2 form layer_num:1 type:conv1
+Conv param:
+in_channels=64 out_channels=64 kernel_size_x=3 kernel_size_y=3 stride_x=1 stride_y=1 dilation_x=1 dilation_y=1 transposed=0 weight=3 feature_map_size_x=224 feature_map_size_y=224
+BN param: dimension 64
+relu_param: 0_32 relu_en 1 relu_mode 00
+layer_num:3 layer type:pool1 form layer_num:2 type:conv2
+Pooling_en 1
+Pool param: pool_size 3 kernel_size_x 2 kernel_size_y 2 Pooling_en 1 oprands 0.25 stride_x 2 stride_y 2
+layer_num:4 layer type:conv3 form layer_num:3 type:pool1
+Conv param:
+in_channels=128 out_channels=128 kernel_size_x=3 kernel_size_y=3 stride_x=1 stride_y=1 dilation_x=1 dilation_y=1 transposed=0 weight=3 feature_map_size_x=112 feature_map_size_y=112
+BN param: dimension 128
+relu_param: 0_32 relu_en 1 relu_mode 00
+layer_num:5 layer type:conv4 form layer_num:4 type:conv3
+Conv param:
+in_channels=128 out_channels=128 kernel_size_x=3 kernel_size_y=3 stride_x=1 stride_y=1 dilation_x=1 dilation_y=1 transposed=0 weight=3 feature_map_size_x=112 feature_map_size_y=112
+BN param: dimension 128
+relu_param: 0_32 relu_en 1 relu_mode 00
+layer_num:6 layer type:pool2 form layer_num:5 type:conv4
+Pooling_en 1
+Pool param: pool_size 3 kernel_size_x 2 kernel_size_y 2 Pooling_en 1 oprands 0.25 stride_x 2 stride_y 2
+layer_num:7 layer type:conv5 form layer_num:6 type:pool2
+Conv param:
+in_channels=256 out_channels=256 kernel_size_x=3 kernel_size_y=3 stride_x=1 stride_y=1 dilation_x=1 dilation_y=1 transposed=0 weight=3 feature_map_size_x=56 feature_map_size_y=56
+BN param: dimension 256
+relu_param: 0_32 relu_en 1 relu_mode 00
+layer_num:8 layer type:conv6 form layer_num:7 type:conv5
+Conv param:
+in_channels=256 out_channels=256 kernel_size_x=3 kernel_size_y=3 stride_x=1 stride_y=1 dilation_x=1 dilation_y=1 transposed=0 weight=3 feature_map_size_x=56 feature_map_size_y=56
+BN param: dimension 256
+relu_param: 0_32 relu_en 1 relu_mode 00
+layer_num:9 layer type:conv7 form layer_num:8 type:conv6
+Conv param:
+in_channels=256 out_channels=256 kernel_size_x=3 kernel_size_y=3 stride_x=1 stride_y=1 dilation_x=1 dilation_y=1 transposed=0 weight=3 feature_map_size_x=56 feature_map_size_y=56
+BN param: dimension 256
+relu_param: 0_32 relu_en 1 relu_mode 00
+layer_num:10 layer type:pool3 form layer_num:9 type:conv7
+Pooling_en 1
+Pool param: pool_size 3 kernel_size_x 2 kernel_size_y 2 Pooling_en 1 oprands 0.25 stride_x 2 stride_y 2
+layer_num:11 layer type:conv8 form layer_num:10 type:pool3
+Conv param:
+in_channels=512 out_channels=512 kernel_size_x=3 kernel_size_y=3 stride_x=1 stride_y=1 dilation_x=1 dilation_y=1 transposed=0 weight=3 feature_map_size_x=28 feature_map_size_y=28
+BN param: dimension 512
+relu_param: 0_32 relu_en 1 relu_mode 00
+layer_num:12 layer type:conv9 form layer_num:11 type:conv8
+Conv param:
+in_channels=512 out_channels=512 kernel_size_x=3 kernel_size_y=3 stride_x=1 stride_y=1 dilation_x=1 dilation_y=1 transposed=0 weight=3 feature_map_size_x=28 feature_map_size_y=28
+BN param: dimension 512
+relu_param: 0_32 relu_en 1 relu_mode 00
+layer_num:13 layer type:conv10 form layer_num:12 type:conv9
+Conv param:
+in_channels=512 out_channels=512 kernel_size_x=3 kernel_size_y=3 stride_x=1 stride_y=1 dilation_x=1 dilation_y=1 transposed=0 weight=3 feature_map_size_x=28 feature_map_size_y=28
+BN param: dimension 512
+relu_param: 0_32 relu_en 1 relu_mode 00
+layer_num:14 layer type:pool4 form layer_num:13 type:conv10
+Pooling_en 1
+Pool param: pool_size 3 kernel_size_x 2 kernel_size_y 2 Pooling_en 1 oprands 0.25 stride_x 2 stride_y 2
+layer_num:15 layer type:conv11 form layer_num:14 type:pool4
+Conv param:
+in_channels=512 out_channels=512 kernel_size_x=3 kernel_size_y=3 stride_x=1 stride_y=1 dilation_x=1 dilation_y=1 transposed=0 weight=3 feature_map_size_x=14 feature_map_size_y=14
+BN param: dimension 512
+relu_param: 0_32 relu_en 1 relu_mode 00
+layer_num:16 layer type:conv12 form layer_num:15 type:conv11
+Conv param:
+in_channels=512 out_channels=512 kernel_size_x=3 kernel_size_y=3 stride_x=1 stride_y=1 dilation_x=1 dilation_y=1 transposed=0 weight=3 feature_map_size_x=14 feature_map_size_y=14
+BN param: dimension 512
+relu_param: 0_32 relu_en 1 relu_mode 00
+layer_num:17 layer type:conv13 form layer_num:16 type:conv12
+Conv param:
+in_channels=512 out_channels=512 kernel_size_x=3 kernel_size_y=3 stride_x=1 stride_y=1 dilation_x=1 dilation_y=1 transposed=0 weight=3 feature_map_size_x=14 feature_map_size_y=14
+BN param: dimension 512
+relu_param: 0_32 relu_en 1 relu_mode 00
+layer_num:18 layer type:pool5 form layer_num:17 type:conv13
+Pooling_en 1
+Pool param: pool_size 3 kernel_size_x 2 kernel_size_y 2 Pooling_en 1 oprands 0.25 stride_x 2 stride_y 2
+layer_num:19 layer type:pool6 form layer_num:18 type:pool5
+Pooling_en 1
+Pool param: pool_size 3 kernel_size_x 2 kernel_size_y 2 Pooling_en 1 oprands 0.25 stride_x 2 stride_y 2
+layer_num:20 layer type:pool7 form layer_num:19 type:pool6
+Pooling_en 1
+Pool param: pool_size 15 kernel_size_x 4 kernel_size_y 4 Pooling_en 1 oprands 0.0625 stride_x 4 stride_y 4
+layer_num:21 layer type:fc1 form layer_num:20 type:pool7
+fc param:in_features_x:1 in_features_y:512 out_features_x:1 out_features_y:512
+layer_num:22 layer type:fc2 form layer_num:21 type:fc1
+fc param:in_features_x:1 in_features_y:512 out_features_x:1 out_features_y:512
+layer_num:23 layer type:fc3 form layer_num:22 type:fc2
+fc param:in_features_x:1 in_features_y:512 out_features_x:1 out_features_y:10

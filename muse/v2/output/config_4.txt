@@ -1,0 +1,19 @@
+relu √
+padding = 1
+input feature_h = 224
+input feature_w = 224
+input channel num = 128
+output channel num = 128
+kernel size = 3x3
+output feature_h = 112
+output feature_w = 112
+w_quan "MIX"
+【Pattern Pruning config】
+pattern_dic.txt存的是16种pattern所对应的mask，顺序是先横着走再换行；pattern_idx所对应的是每个kernel所采用的pattern编号，顺序与weight顺序一致；weight.txt是不做压缩的，仅作参考；weight_nonzero是最终给到芯片的权重，已经做了4pattern压缩存储。
+pattern: 9-pattern
+BN中，k=0.01 (0x211F)， b=0
+act0 file               : layers.4.conv.input.6.txt
+output file             : layers.4.quant.output.6.txt
+output file             : layers.4.quant.output.6.txt
+bn k file               : layers.4.bn.bn_k.txt
+bn b file               : layers.4.bn.bn_b.txt
