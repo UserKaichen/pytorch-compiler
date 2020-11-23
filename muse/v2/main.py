@@ -426,11 +426,9 @@ def write_common_params(config, param, in_q, out_q, info, layer_type):
     config.append("{}{}".format("input feature_w = ", in_feature_w))
     if layer_type != "pool":
         if (layer_type == "fc"):
-            out_feature_h = in_feature_h = 1
-            out_feature_w = in_feature_w = 1
-            if out_feature_h == 1 and out_feature_w == 1:
-                kernel_size_x = out_feature_h
-                kernel_size_y = out_feature_w
+            if in_feature_h == 1 and in_feature_w == 1:
+                kernel_size_x = out_feature_h = in_feature_h
+                kernel_size_y = out_feature_w = in_feature_w
     config.append("{}{}".format("output feature_h = ", out_feature_h))
     config.append("{}{}".format("output feature_w = ", out_feature_w))
     config.append("\n")
@@ -554,6 +552,7 @@ def write_layer_config(layermsg, quant_list):
         path = "{}{}".format("./output/config", ".txt")
     else:
         path = "{}{}{}".format("./output/config_", str(int(layername)-1), ".txt")
+
     with open(path, 'w') as fw:
         layer_type = " "
         for i in range(len(layermsg)):
