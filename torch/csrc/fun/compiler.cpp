@@ -11,12 +11,15 @@ using namespace std;
 using namespace torch::jit;
 
 namespace fun {
+
 #define SIZE 64
 int layer_num;
+int padding_num;
 int layer_num_bf;
 char layer_type[SIZE];
 int num[3] = {0,0,0};
 char layer_type_bf[SIZE];
+
 torch::jit::Node* all_node_back = 0;
 torch::jit::Value* GetAttrValue = 0;
 torch::jit::Node* conv_node_back = 0;
@@ -107,7 +110,6 @@ NNKnifeResult NNKnife() {
   return result;
 }
 
-LinearParameter param_fc;
 Conv2dParameter param_conv;
 BatchNormParameter param_bn;
 
@@ -264,13 +266,13 @@ class Compiler {
 
   LinearParameter parseLinear(torch::jit::Node* node) {
     unordered_map<string, Module> grand_children = {};
-    const std::string& linear_name = node->s(attr::name);
     auto sequential_module = children["classifier"];
     for (const NameModule& s : sequential_module.named_children()) {
 	grand_children[s.name] = s.value;
     }
-    const std::string& linear_grandchild_name = node->inputs()[0]->node()->s(attr::name);
-    auto grandchild_graph = grand_children[linear_grandchild_name].get_method("forward").graph();
+
+    const std::string& linear_name = node->inputs()[0]->node()->s(attr::name);
+    auto grandchild_graph = grand_children[linear_name].get_method("forward").graph();
     LinearParameter param;
 
     auto children_output = grandchild_graph->outputs()[0]->type()->cast<TensorType>();
@@ -334,7 +336,7 @@ class Compiler {
 
     auto nodes = child_graph->nodes();
     for (auto&& node : nodes) {
-      node_backend(node);
+      node_backend(node, 0);
     }
   }
 
@@ -477,21 +479,28 @@ class Compiler {
     return Point{0, point_out.Y * stride_y, point_out.X * stride_x};
   }
   
-  void node_backend(torch::jit::Node*& node) {
+  void node_backend(torch::jit::Node*& node, int cats_num) {
     auto kind = node->kind();
     if (kind == prim::GetAttr) {
       return;
     }
 
     if (kind == aten::cat) {
-      parseCat(node);
-      return;
+      padding_num++;
+      if (cats_num == padding_num) {
+        auto param = parseCat(node);
+        std::cout << "padding param: " << "param.dim_x:"  << param.dim_x 
+                  << " param.dim_y:"  << param.dim_y 
+                  << " param.dim_z:"  << param.dim_z
+                  << " param.dim_w:"  << param.dim_w << std::endl;
+        return;
+      }
     }
 
     if (kind == aten::relu) {
       char layer_bf[SIZE*2] = "";
       if (layer_num-1) {
-        sprintf(layer_bf, " form layer_num:%d type:%s", layer_num_bf, layer_type_bf);
+        sprintf(layer_bf, "    form layer_num:%d type:%s", layer_num_bf, layer_type_bf);
       }
       if (is_module(all_node_back, "__torch__.torch.nn.modules.conv.Conv2d") ||
           is_module(all_node_back, "__torch__.torch.nn.modules.conv.ConvTranspose2d")) {
@@ -507,16 +516,17 @@ class Compiler {
         param_conv.feature_map_size_x = total_workload_out.H;
         param_conv.feature_map_size_y = total_workload_out.W;
         param_conv.weight = 3;//Conv2D 的权重是通过上位机给出的，这部分和量化关系紧密
+        const std::string& convname = conv_node_back->inputs()[0]->node()->s(attr::name);
 
         std::cout << "layer_num:" << layer_num << " layer type:" << "conv" << num[0] << layer_bf << "\n";
-        std::cout << "Conv param:\nin_channels=" << param_conv.in_channels
-                  << " out_channels=" << param_conv.out_channels << " kernel_size_x="
-		  << param_conv.kernel_size_x << " kernel_size_y=" << param_conv.kernel_size_y
-		  << " stride_x=" << param_conv.stride_x << " stride_y=" << param_conv.stride_y
-		  << " dilation_x="<< param_conv.dilation_x << " dilation_y="
-		  << param_conv.dilation_y << " transposed=" << param_conv.transposed 
-		  << " weight=" << param_conv.weight << " feature_map_size_x=" << param_conv.feature_map_size_x 
-		  << " feature_map_size_y=" << param_conv.feature_map_size_y << std::endl;
+        std::cout << convname << " param:\nin_channels:" << param_conv.in_channels
+                  << " out_channels:" << param_conv.out_channels << " kernel_size_x:"
+		  << param_conv.kernel_size_x << " kernel_size_y:" << param_conv.kernel_size_y
+		  << " stride_x:" << param_conv.stride_x << " stride_y:" << param_conv.stride_y
+		  << " dilation_x:"<< param_conv.dilation_x << " dilation_y:"
+		  << param_conv.dilation_y << " transposed:" << param_conv.transposed 
+		  << " weight:" << param_conv.weight << " feature_map_size_x:" << param_conv.feature_map_size_x 
+		  << " feature_map_size_y:" << param_conv.feature_map_size_y << std::endl;
 
         auto total_workload_in_shape = shape(conv_node_back->inputs()[1]);
         auto total_workload_in = Workload{total_workload_in_shape[1],
@@ -565,14 +575,15 @@ class Compiler {
         }
 
         if (param_bn.flag) {
-	  std::cout << "BN param: dimension " << param_bn.dimen << std::endl;
+          const std::string& bnname = all_node_back->inputs()[0]->node()->s(attr::name);
+	  std::cout << bnname << " param: dimension:" << param_bn.dimen << std::endl;
 	  bzero(&param_bn, sizeof(BatchNormParameter));
 	}
        layer_num_bf = layer_num;
        sprintf(layer_type_bf, "conv%d", num[0]);
       }
 
-      std::cout << "relu_param: 0_32" << " relu_en 1" << " relu_mode 00" << std::endl;
+      std::cout << "relu param: 0_32" << " relu_en 1" << " relu_mode 00" << std::endl;
 
       return;
     }
@@ -636,15 +647,15 @@ class Compiler {
         sprintf(layer_type, "pool%d", num[1]);
         char layer_bf[SIZE*2] = "";
         if (layer_num-1) {
-          sprintf(layer_bf, " form layer_num:%d type:%s", layer_num_bf, layer_type_bf);
+          sprintf(layer_bf, "    form layer_num:%d type:%s", layer_num_bf, layer_type_bf);
         }
 	std::cout << "layer_num:" << layer_num << " layer type:" << layer_type  << layer_bf << "\n";
-        std::cout << "Pooling_en 1" << std::endl;
         auto param = parsePool2d(node);
         auto size = param.kernel_size_x * param.kernel_size_y;
-        std::cout << "Pool param: pool_size " << size - 1 << " kernel_size_x " << param.kernel_size_x << 
-                  " kernel_size_y " << param.kernel_size_y << " Pooling_en 1" << " oprands " << 1.0 / size 
-                  << " stride_x " << param.stride_x << " stride_y " << param.stride_y << std::endl;
+        const std::string& poolname = node->inputs()[0]->node()->s(attr::name);
+        std::cout << poolname << " param: pool_size " << size - 1 << " kernel_size_x:" << param.kernel_size_x << 
+                  " kernel_size_y:" << param.kernel_size_y << " Pooling_en 1" << " oprands " << 1.0 / size 
+                  << " stride_x:" << param.stride_x << " stride_y:" << param.stride_y << std::endl;
         layer_num_bf = layer_num;
         sprintf(layer_type_bf, "pool%d", num[1]);
 
@@ -665,6 +676,7 @@ class Compiler {
      }
 
       else if (is_module(node, "__torch__.torch.nn.modules.activation.ReLU")) {
+          std::cout << "fc layer has ReLU" << std::endl;
           return;
      }
 
@@ -675,11 +687,11 @@ class Compiler {
           sprintf(layer_type, "fc%d", num[2]);
           char layer_bf[SIZE*2] = "";
           if (layer_num-1) {
-            sprintf(layer_bf, " form layer_num:%d type:%s", layer_num_bf, layer_type_bf);
+            sprintf(layer_bf, "    form layer_num:%d type:%s", layer_num_bf, layer_type_bf);
           }
 	  std::cout << "layer_num:" << layer_num << " layer type:" << layer_type  << layer_bf << "\n";
           auto param = parseLinear(node);
-	  std::cout << "fc param:" << "in_features_x:" << param.in_features_x << " in_features_y:" 
+	  std::cout << "fc" << num[2] << " param:" << "in_features_x:" << param.in_features_x << " in_features_y:" 
                     << param.in_features_y << " out_features_x:" << param.out_features_x 
                     << " out_features_y:" << param.out_features_y << std::endl;
           layer_num_bf = layer_num;
@@ -832,17 +844,23 @@ class Compiler {
   }
 
   void backend() {
-    auto nodes = module.get_method("forward").graph()->nodes();
+    auto cats_num = 0;
     auto node_num = 0;
+    auto nodes = module.get_method("forward").graph()->nodes();
+
     for (auto&& node : nodes) {
       node_num++;
+      if (node->kind() == aten::cat) {
+          cats_num++;
+      }
     }
+
     for (auto&& node : nodes) {
       if (node_num == 2) {
 	node_one_bkend(node);
 	break;
       } else {
-        node_backend(node);
+        node_backend(node, cats_num);
       }
     }
   }

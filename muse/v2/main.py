@@ -1,5 +1,5 @@
-import os
 import io
+import os
 import sys
 import math
 import torch
@@ -13,6 +13,9 @@ in_q  = 7
 layer_cnts = 0
 in_feature_h = 0
 in_feature_w = 0
+padding_param = ""
+in_channels_bf = 0
+out_channels_bf = 0
 
 class makenet():
     def __init__(self, filename):
@@ -232,8 +235,8 @@ class makenet():
         self.fvggnet.write(convcmd)
 
     def _make_forward(self):
-        self.fvggnet.write("    def forward(self, x):\n")
         convcnt = poolcnt = 0
+        self.fvggnet.write("    def forward(self, x):\n")
 
         for i in range(len(self.layer)):
             if "Conv2d" in str(self.layer[i]):
@@ -326,7 +329,6 @@ def get_layer_info(path, flag):
                 layer_info.append(line)
     return layer_info
 
-
 def getoneDimList(newlist):
     oneDimList = []
     for element in newlist:
@@ -357,76 +359,197 @@ def write_pt_data(filename, filedata):
 
     print("%s write data success" % path)
 
+def write_to_file(fw, config):
+    for i in range(len(config)):
+        if "\n" in config[i]:
+            fw.write("\n")
+            continue
+        fw.write(config[i])
+        fw.write("\n")
+
+def out_to_in(out_feature_h, out_feature_w, in_channels, out_channels, type):
+    global in_feature_h, in_feature_w
+    global in_channels_bf, out_channels_bf
+
+    if type == "pool" and int(out_feature_h) == 7 and "padding param: " in padding_param:
+        in_feature_h = str(int(padding_param.split(" ", 6)[4].split(":")[1]))
+        in_feature_w = str(int(padding_param.split(" ", 6)[5].split(":")[1]))
+    else:
+        in_feature_h = out_feature_h
+        in_feature_w = out_feature_w
+    if type != "pool":
+        in_channels_bf = in_channels
+        out_channels_bf = out_channels
+
+def get_all_params(config, param):
+    stride_x = stride_y = ""
+    in_channels   = out_channels  = ""
+    out_feature_w = out_feature_h = ""
+    kernel_size_x = kernel_size_y = ""
+
+    for i in range(len(param)):
+        if "in_channels" in param[i] or "in_features_y" in param[i]:
+            in_channels = "{}{}".format("input channel num  = ", param[i].split(":")[1].strip())
+            config.append(in_channels)
+        elif "out_channels" in param[i] or "out_features_y" in param[i]:
+            out_channels = "{}{}".format("output channel num = ", param[i].split(":")[1].strip())
+            config.append(out_channels)
+        elif "feature_map_size_x" in param[i]:
+            out_feature_h = param[i].split(":")[1].strip()
+        elif "feature_map_size_y" in param[i]:
+            out_feature_w = param[i].split(":")[1].strip()
+        elif "stride_x" in param[i]:
+            stride_x = "{}{}".format("stride_x = ", param[i].split(":")[1].strip())
+        elif "stride_y" in param[i]:
+            stride_y = "{}{}".format("stride_y = ", param[i].split(":")[1].strip())
+        elif "kernel_size_x" in param[i]:
+            kernel_size_x = param[i].split(":")[1].strip()
+        elif "kernel_size_y" in param[i]:
+            kernel_size_y = param[i].split(":")[1].strip()
+
+    return config, out_feature_w, out_feature_h, kernel_size_x, kernel_size_y, in_channels, out_channels, stride_x, stride_y
+
+def write_common_params(config, param, in_q, out_q, info, layer_type):
+    global in_feature_h, in_feature_w
+
+    config, out_feature_w, out_feature_h, kernel_size_x, kernel_size_y, in_channels, out_channels, stride_x, stride_y = get_all_params(
+        config, param)
+
+    if layer_type == "pool":
+        config.append(in_channels_bf)
+        config.append(out_channels_bf)
+        ratio = int(kernel_size_x)
+        out_feature_h = str(int(int(float(in_feature_h)) / ratio))
+        out_feature_w = str(int(int(float(in_feature_w)) / ratio))
+    config.append("{}{}".format("input feature_h = ", in_feature_h))
+    config.append("{}{}".format("input feature_w = ", in_feature_w))
+    if layer_type != "pool":
+        if (layer_type == "fc"):
+            out_feature_h = in_feature_h = 1
+            out_feature_w = in_feature_w = 1
+            if out_feature_h == 1 and out_feature_w == 1:
+                kernel_size_x = out_feature_h
+                kernel_size_y = out_feature_w
+    config.append("{}{}".format("output feature_h = ", out_feature_h))
+    config.append("{}{}".format("output feature_w = ", out_feature_w))
+    config.append("\n")
+    if layer_type == "conv":
+        config.append("padding = 1")
+    else:
+        config.append("padding = 0")
+    config.append(in_q)
+    config.append(out_q)
+    config.append("{}{}{}{}".format("kernel size = ", kernel_size_x, "×", kernel_size_y))
+    if "relu " in info:
+        config.append(info)
+    else:
+        config.append("relu 0")
+    config.append("w_quan   \"MIX\"")
+    config.append("\n")
+
+    if layer_type != "pool":
+        config.append("【Pattern Pruning config】")
+        config.append("pattern_dic.txt存的是16种pattern所对应的mask，顺序是先横着走再换行；pattern_idx所对应的是每个kernel所采用的pattern编号，顺序与weight顺序一致；weight.txt是不做压缩的，仅作参考；weight_nonzero是最终给到芯片的权重，已经做了4pattern压缩存储。")
+        config.append("\n")
+        config.append("pattern: 9-pattern")
+        config.append("\n")
+        config.append("BN中，k=0.01 (0x211F)， b=0")
+        config.append("\n")
+
+    return out_feature_w, out_feature_h, in_channels, out_channels
+
 def write_conv_config(fw, layermsg):
-    paramlist  = []
-    configlist = []
     layer_num  = ""
-    out_feature_h = ""
-    out_feature_w = ""
-    global in_feature_h 
-    global in_feature_w 
+    param  = config = []
+    in_q = out_q = relu = ""
 
     for i in range(len(layermsg)):
         if layermsg[i].startswith("layer_num:") is True:
             layer_num = layermsg[i].split(" ")[0].strip().split(":")[1]
         elif "in_channels" in layermsg[i]:
-            paramlist = layermsg[i].split(" ")
-        elif "relu_param" in layermsg[i]:
-            configlist.append("relu √")
-    configlist.append("padding = 1")
-    configlist.append("{}{}".format("input feature_h = ", in_feature_h))
-    configlist.append("{}{}".format("input feature_w = ", in_feature_w))
+            param = layermsg[i].split(" ")
+        elif "relu param" in layermsg[i]:
+            relu = "relu √"
+        elif "in_q =" in layermsg[i]:
+            in_q = layermsg[i]
+        elif "out_q =" in layermsg[i]:
+            out_q = layermsg[i]
 
-    for i in range(len(paramlist)):
-        if "in_channels" in paramlist[i]:
-            configlist.append("{}{}".format("input channel num = ", paramlist[i].split("=")[1].strip()))
-        elif "out_channels" in paramlist[i]:
-            configlist.append("{}{}".format("output channel num = ", paramlist[i].split("=")[1].strip()))
-        elif "feature_map_size_x" in paramlist[i]:
-            out_feature_h = paramlist[i].split("=")[1].strip()
-            configlist.append("{}{}".format("output feature_h = ", out_feature_h))
-        elif "feature_map_size_y" in paramlist[i]:
-            out_feature_w = paramlist[i].split("=")[1].strip()
-            configlist.append("{}{}".format("output feature_w = ", out_feature_w))
-        elif "in_q" in paramlist[i]:
-            configlist.append("{}{}".format("in_q = ", paramlist[i].split("=")[1].strip()))
-        elif "out_q" in paramlist[i]:
-            configlist.append("{}{}".format("out_q = ", paramlist[i].split("=")[1].strip()))
-        elif "kernel_size_x" in paramlist[i]:
-            configlist.append("{}{}{}{}".format("kernel size = ", paramlist[i].split("=")[1].strip(), "x", paramlist[i].split("=")[1].strip()))
+    out_feature_w, out_feature_h, in_channels, out_channels = write_common_params(config, param, in_q, out_q, relu, "conv")
 
-    configlist.append("w_quan \"MIX\"")
-    configlist.append("【Pattern Pruning config】")
-    configlist.append("pattern_dic.txt存的是16种pattern所对应的mask，顺序是先横着走再换行；pattern_idx所对应的是每个kernel所采用的pattern编号，顺序与weight顺序一致；weight.txt是不做压缩的，仅作参考；weight_nonzero是最终给到芯片的权重，已经做了4pattern压缩存储。")
-    configlist.append("pattern: 9-pattern")
-    configlist.append("BN中，k=0.01 (0x211F)， b=0")
-    configlist.append("{}{}{}".format("act0 file               : layers.", layer_num, ".conv.input.6.txt"))
-    configlist.append("{}{}{}".format("output file             : layers.", layer_num, ".quant.output.6.txt"))
-    configlist.append("{}{}{}".format("output file             : layers.", layer_num, ".quant.output.6.txt"))
-    configlist.append("{}{}{}".format("bn k file               : layers.", layer_num, ".bn.bn_k.txt"))
-    configlist.append("{}{}{}".format("bn b file               : layers.", layer_num, ".bn.bn_b.txt"))
+    config.append("{}{}{}".format("act0 file               : layers.", str(int(layer_num)-1), ".conv.input.6.txt"))
+    config.append("{}{}{}".format("output file             : layers.", str(int(layer_num)-1), ".quant.output.6.txt"))
+    config.append("{}{}{}".format("weight file             : layers.", str(int(layer_num)-1), ".conv.weight.txt"))
+    config.append("{}{}{}".format("bn k file               : layers.", str(int(layer_num)-1), ".bn.bn_k.txt"))
+    config.append("{}{}{}".format("bn b file               : layers.", str(int(layer_num)-1), ".bn.bn_b.txt"))
 
-    for i in range(len(configlist)):
-        fw.write(configlist[i])
-        fw.write("\n")
-
-    in_feature_h = out_feature_h
-    in_feature_w = out_feature_w
+    write_to_file(fw, config)
+    out_to_in(out_feature_h, out_feature_w , in_channels, out_channels, "conv")
 
 def write_pool_config(fw, layermsg):
-    print("pool get list", layermsg)
-    pass
+    in_q = out_q = ""
+    param = config = []
+    poolname = "Maxpooling"
 
-def write_fc_config(fw, layermsg):
-    print("fc get list", layermsg)
-    pass
+    for i in range(len(layermsg)):
+        if "padding param:" in layermsg[i]:
+            global padding_param
+            padding_param = layermsg[i]
+        elif "param:" in layermsg[i]:
+            param = layermsg[i].split(" ")
+        if "avgpool" in layermsg[i]:
+            poolname = "Average pooling"
+        elif "in_q =" in layermsg[i]:
+            in_q = layermsg[i]
+        elif "out_q =" in layermsg[i]:
+            out_q = layermsg[i]
 
-def write_layer_config(layermsg):
+    out_feature_w, out_feature_h, in_channels, out_channels = write_common_params(config, param, in_q, out_q, "", "pool")
+
+    write_to_file(fw, config)
+    fw.write(poolname)
+
+    out_to_in(out_feature_h, out_feature_w, in_channels, out_channels, "pool")
+
+def write_fc_config(fw, layermsg, quant_list):
+    fc_name = ""
+    param  = config = []
+    in_q = out_q = relu = ""
+
+    for i in range(len(layermsg)):
+        if " param:" in layermsg[i]:
+            fc_name = layermsg[i].split(" ")[0].strip()
+            param = layermsg[i].split(" ")
+        elif "in_q =" in layermsg[i]:
+            in_q = layermsg[i]
+        elif "out_q =" in layermsg[i]:
+            out_q = layermsg[i]
+        elif "ReLU" in layermsg[i]:
+            relu = "relu √"
+
+    out_feature_w, out_feature_h, in_channels, out_channels = write_common_params(config, param, in_q, out_q, relu, "fc")
+
+    classifier = []
+    for i in range(len(quant_list)):
+        if (i % 2) == 0:
+            if "classifier" in quant_list[i] and "weight" in quant_list[i]:
+                classifier.append("{}{}{}".format(quant_list[i].rsplit(".")[0], ".",quant_list[i].rsplit(".")[1]))
+
+    config.append("{}{}{}".format("act0 file               : ", classifier[int(fc_name[2])-1], ".input.6.txt"))
+    config.append("{}{}{}{}".format("output file             : ", "quant_", fc_name, ".output.6.txt"))
+    config.append("{}{}{}".format("weight file             : ", classifier[int(fc_name[2])-1], ".weight.txt"))
+    config.append("{}{}{}".format("bn k file               : ", classifier[int(fc_name[2])-1], ".k.txt"))
+    config.append("{}{}{}".format("bn b file               : ", classifier[int(fc_name[2])-1], ".bias.txt"))
+
+    write_to_file(fw, config)
+    out_to_in(out_feature_h, out_feature_w,in_channels, out_channels, "fc")
+
+def write_layer_config(layermsg, quant_list):
     layername = layermsg[0].split(":", 1)[1].split(" ", 1)[0].strip('\n')
-    if layername == "":
+    if layername == "1":
         path = "{}{}".format("./output/config", ".txt")
     else:
-        path = "{}{}{}".format("./output/config_", layername, ".txt")
+        path = "{}{}{}".format("./output/config_", str(int(layername)-1), ".txt")
     with open(path, 'w') as fw:
         layer_type = " "
         for i in range(len(layermsg)):
@@ -440,43 +563,45 @@ def write_layer_config(layermsg):
         elif "pool" in layer_type:
             write_pool_config(fw, layermsg) 
         elif "fc" in layer_type:
-            write_fc_config(fw, layermsg)
+            write_fc_config(fw, layermsg, quant_list)
         else:
             print("Unknown layer type...")
             return
 
     print("%s write config success" % path)
 
-def deal_out_in_q(data, layer_msg):
+def deal_out_in_q(quant_list, data, layer_msg):
     bits = 7
     global in_q
     if "pool" in layer_msg:
         out_q = in_q
     else:
         out_q = bits - math.ceil(math.log2(0.5*data))
+
     layer_msg.append("{}{}".format("in_q = ", str(in_q)))
     layer_msg.append("{}{}".format("out_q = ", str(out_q)))
     in_q = out_q
-    write_config = threading.Thread(target=write_layer_config, args=(layer_msg, ))
+    write_config = threading.Thread(target=write_layer_config, args=(layer_msg, quant_list))
     write_config.start()
     write_config.join()
 
-def splicing_output(num, flag, layerlist, layer_msg):
+def splicing_output(num, flag, layerlist, layer_msg, quant_list):
     for i in range(len(layerlist)):
         if "quant.alpha" in layerlist[i][0]:
             data = layerlist[i][1]
             if num == 0:
-                deal_out_in_q(data, layer_msg)
+                deal_out_in_q(quant_list, data, layer_msg)
                 return
 
     for i in range(num):
         name = layerlist[flag+i][0]
         data = layerlist[flag+i][1]
         if "bn.running_mean" in name or "bn.running_var" in name \
-              or "bn.weight" in name or "bn.bias" in name:
+              or "bn.weight" in name or "bn.bias" in name \
+              or "num_batches_tracked" in name:
             continue
         elif "quant.alpha" in name:
-            deal_out_in_q(data, layer_msg)
+            deal_out_in_q(name, data, layer_msg)
             continue
         write_data = threading.Thread(target=write_pt_data, args=(name, data))
         write_data.start()
@@ -522,30 +647,32 @@ def load_pt(pt_path):
                quant_list.append(v)
            name_list.append(k)
            data_list.append(v)
-           a = v
+           tensor = v
 
-    cnt    = 0
-    layers = [["", a]]
+    counts = 0
+    layers = [["", tensor]]
 
     for i in range(layer_cnts):
         layer = "{}{}{}".format("layers.", i, ".")
         for j in range(len(name_list)):
             if layer in name_list[j]:
                  layers.append([name_list[j], data_list[j]])
-                 cnt += 1
-        onelayer_cnt.append(str(cnt))
-        cnt = 0
+                 counts += 1
+        onelayer_cnt.append(str(counts))
+        counts = 0
 
     del(layers[0])
     logpath = "{}{}".format(os.getcwd(), "/vggnet.log")
     for i in range(layer_cnts):
         layername = "{}{}".format("layer_num:", str(i+1))
         layer_msg = get_layer_info(logpath, layername)
-        splicing_output(int(onelayer_cnt[i]), cnt, layers, layer_msg)
-        cnt += int(onelayer_cnt[i])
+        splicing_output(int(onelayer_cnt[i]), counts, layers, layer_msg, quant_list)
+        counts += int(onelayer_cnt[i])
         
     for i in range(int(len(quant_list))):
         tmpstr = str(quant_list[i])
+        if "alpha" in tmpstr:
+            continue
         if "quant_" in tmpstr or "classifier" in tmpstr:
             write_data = threading.Thread(target=write_pt_data, 
                          args=(quant_list[i], quant_list[i+1]))
