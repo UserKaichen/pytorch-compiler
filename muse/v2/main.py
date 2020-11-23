@@ -341,14 +341,14 @@ def getoneDimList(newlist):
 def write_pt_data(filename, filedata):
     path = "{}{}{}".format("./output/", filename, ".txt")
     with open(path, 'w') as fw:
-        if "num_batches_tracked" in filename or "quant_" in filename or ".alpha" in filename:
+        if "quant_" in filename:
             fw.write(str(filedata))
         else:
             conver = filedata.tolist()
             if filedata.dim() == 0:
                 fw.write(str(conver))
                 return
-            if filedata.dim() > 1:
+            elif filedata.dim() > 1:
                 conver = getoneDimList(conver)
             for i in range(len(conver)):
                 if "bn.bn" in filename:
@@ -382,7 +382,7 @@ def out_to_in(out_feature_h, out_feature_w, in_channels, out_channels, type):
         out_channels_bf = out_channels
 
 def get_all_params(config, param):
-    stride_x = stride_y = ""
+    stride_x      = stride_y      = ""
     in_channels   = out_channels  = ""
     out_feature_w = out_feature_h = ""
     kernel_size_x = kernel_size_y = ""
@@ -407,13 +407,14 @@ def get_all_params(config, param):
         elif "kernel_size_y" in param[i]:
             kernel_size_y = param[i].split(":")[1].strip()
 
-    return config, out_feature_w, out_feature_h, kernel_size_x, kernel_size_y, in_channels, out_channels, stride_x, stride_y
+    return config, out_feature_w, out_feature_h, kernel_size_x, kernel_size_y, \
+           in_channels, out_channels, stride_x, stride_y
 
 def write_common_params(config, param, in_q, out_q, info, layer_type):
     global in_feature_h, in_feature_w
 
-    config, out_feature_w, out_feature_h, kernel_size_x, kernel_size_y, in_channels, out_channels, stride_x, stride_y = get_all_params(
-        config, param)
+    config, out_feature_w, out_feature_h, kernel_size_x, kernel_size_y, in_channels, \
+            out_channels, stride_x, stride_y = get_all_params(config, param)
 
     if layer_type == "pool":
         config.append(in_channels_bf)
@@ -475,7 +476,8 @@ def write_conv_config(fw, layermsg):
         elif "out_q =" in layermsg[i]:
             out_q = layermsg[i]
 
-    out_feature_w, out_feature_h, in_channels, out_channels = write_common_params(config, param, in_q, out_q, relu, "conv")
+    out_feature_w, out_feature_h, in_channels, out_channels = \
+    write_common_params(config, param, in_q, out_q, relu, "conv")
 
     config.append("{}{}{}".format("act0 file               : layers.", str(int(layer_num)-1), ".conv.input.6.txt"))
     config.append("{}{}{}".format("output file             : layers.", str(int(layer_num)-1), ".quant.output.6.txt"))
@@ -504,7 +506,8 @@ def write_pool_config(fw, layermsg):
         elif "out_q =" in layermsg[i]:
             out_q = layermsg[i]
 
-    out_feature_w, out_feature_h, in_channels, out_channels = write_common_params(config, param, in_q, out_q, "", "pool")
+    out_feature_w, out_feature_h, in_channels, out_channels = \
+    write_common_params(config, param, in_q, out_q, "", "pool")
 
     write_to_file(fw, config)
     fw.write(poolname)
@@ -527,7 +530,8 @@ def write_fc_config(fw, layermsg, quant_list):
         elif "ReLU" in layermsg[i]:
             relu = "relu √"
 
-    out_feature_w, out_feature_h, in_channels, out_channels = write_common_params(config, param, in_q, out_q, relu, "fc")
+    out_feature_w, out_feature_h, in_channels, out_channels = \
+    write_common_params(config, param, in_q, out_q, relu, "fc")
 
     classifier = []
     for i in range(len(quant_list)):
@@ -671,7 +675,7 @@ def load_pt(pt_path):
         
     for i in range(int(len(quant_list))):
         tmpstr = str(quant_list[i])
-        if "alpha" in tmpstr:
+        if ".alpha" in tmpstr:
             continue
         if "quant_" in tmpstr or "classifier" in tmpstr:
             write_data = threading.Thread(target=write_pt_data, 
