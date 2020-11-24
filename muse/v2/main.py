@@ -386,10 +386,10 @@ def out_to_in(out_feature_h, out_feature_w, in_channels, out_channels, type):
         out_channels_bf = out_channels
 
 def get_all_params(config, param):
-    stride_x      = stride_y      = ""
-    in_channels   = out_channels  = ""
-    out_feature_w = out_feature_h = ""
-    kernel_size_x = kernel_size_y = ""
+    stride_x      = stride_y      =  ""
+    in_channels   = out_channels  =  ""
+    out_feature_w = out_feature_h =  ""
+    kernel_size_x = kernel_size_y =  ""
 
     for i in range(len(param)):
         if "in_channels" in param[i] or "in_features_y" in param[i]:
@@ -462,9 +462,9 @@ def write_common_params(config, param, in_q, out_q, info, layer_type):
     return out_feature_w, out_feature_h, in_channels, out_channels
 
 def write_conv_config(fw, layermsg):
-    layer_num  = ""
-    param  = config = []
-    in_q = out_q = relu = ""
+    in_q      = out_q   =  ""
+    layer_num = relu    =  ""
+    param     = config  =  []
 
     for i in range(len(layermsg)):
         if layermsg[i].startswith("layer_num:") is True:
@@ -491,8 +491,8 @@ def write_conv_config(fw, layermsg):
     out_to_in(out_feature_h, out_feature_w , in_channels, out_channels, "conv")
 
 def write_pool_config(fw, layermsg):
-    in_q = out_q = ""
-    param = config = []
+    in_q     = out_q  = ""
+    param    = config = []
     poolname = "Maxpooling"
 
     for i in range(len(layermsg)):
@@ -517,9 +517,9 @@ def write_pool_config(fw, layermsg):
     out_to_in(out_feature_h, out_feature_w, in_channels, out_channels, "pool")
 
 def write_fc_config(fw, layermsg, quant_list):
-    fc_name = ""
-    param  = config = []
-    in_q = out_q = relu = ""
+    in_q    = out_q  = ""
+    fc_name = relu   = ""
+    param   = config = []
 
     for i in range(len(layermsg)):
         if " param:" in layermsg[i]:
