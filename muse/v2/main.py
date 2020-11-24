@@ -23,8 +23,8 @@ class makenet():
         self.layer = []
         self.convs = []
         self.pools = []
-        self.qulist= []
-        self.fcinit= []
+        self.qulist = []
+        self.fcinit = []
         self.fcford = []
         self.avginit = []
         self.avgford = []
@@ -40,8 +40,8 @@ class makenet():
         self.make_forward(filename)
         self.make_weight(filename)
         self.make_main(filename)
-
         self.fmakenet.close()
+
         os.system("python3 makenet.py > layerinfo")
         self.splicing_layers("layerinfo")
         self.bns[0] = self.get_op_code(filename, "bn")
@@ -202,6 +202,7 @@ class makenet():
                 self.fvggnet.write("{}{}{}{}{}".format("        self.bn", j+1, " = nn.",
                                                  self.bns[j+1].split(":")[1].strip(), "\n"))
         self.fvggnet.write("\n")
+
         for i in range(len(self.avginit)):
             self.fvggnet.write("{}{}{}".format("        ", self.avginit[i], "\n"))
         for i in range(len(self.qulist)):
@@ -211,8 +212,9 @@ class makenet():
             self.fvggnet.write("{}{}{}".format("        ", self.fcinit[i], "\n"))
 
     def _make_padding(self, filename):
-        self.fvggnet.write("\n")
         read_flag = 0
+        self.fvggnet.write("\n")
+
         with open(filename, 'r') as file:
             while True:
                 line = file.readline()
@@ -227,6 +229,7 @@ class makenet():
     def _make_convlay(self, convcnt):
         x = "F.relu"
         end = "))\n"
+
         if self.bns[0] == "True":
             x = "F.relu(self.bn"
             end = ")))\n"
@@ -313,6 +316,7 @@ def get_layer_info(path, flag):
     layer_cnt = 0
     layer_info = []
     find_flg = flag
+
     if int(str(find_flg).split(":", 1)[1]) == 0:
         print("please do not send layer_num:0")
         exit(0)
@@ -327,6 +331,7 @@ def get_layer_info(path, flag):
                 break
             if layer_cnt == 1:
                 layer_info.append(line)
+
     return layer_info
 
 def getoneDimList(newlist):
