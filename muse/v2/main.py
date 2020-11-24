@@ -148,7 +148,6 @@ class makenet():
                     if "def _initialize_weights" not in line and read_flag == 0:
                         continue
                     read_flag = 1
-                    # if "= vgg(" and "_initialize_weights" not in line:
                     if "= vgg(" in line:
                         break
                     self.fmakenet.write(line)
