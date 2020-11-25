@@ -9,13 +9,13 @@ import subprocess
 import torch.nn as nn
 from quant_layer import QuantLayer
 
-in_q  = 7
+in_q  = 5
 layer_cnts = 0
 in_feature_h = 0
 in_feature_w = 0
 padding_param = ""
-in_channels_bf = 0
-out_channels_bf = 0
+in_channels_bf = ""
+out_channels_bf = ""
 
 class makenet():
     def __init__(self, filename):
@@ -440,6 +440,7 @@ def get_all_params(config, param):
                 stride_x:
                 stride_y:
     """
+    global              out_channels_bf
     stride_x      = stride_y      =  ""
     in_channels   = out_channels  =  ""
     out_feature_w = out_feature_h =  ""
@@ -448,7 +449,10 @@ def get_all_params(config, param):
     for i in range(len(param)):
         if "in_channels" in param[i] or "in_features_y" in param[i]:
             in_channels = "{}{}".format("input channel num  = ", param[i].split(":")[1].strip())
-            config.append(in_channels)
+            if in_channels.strip() == out_channels_bf or len(out_channels_bf) == 0:
+                config.append(in_channels)
+            else:
+                config.append("{}{}".format("input channel num  = ", out_channels_bf.split("=")[1].strip()))
         elif "out_channels" in param[i] or "out_features_y" in param[i]:
             out_channels = "{}{}".format("output channel num = ", param[i].split(":")[1].strip())
             config.append(out_channels)
