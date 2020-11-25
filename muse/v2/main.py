@@ -3,9 +3,11 @@ import os
 import sys
 import math
 import torch
+import struct
 import shutil
 import threading
 import subprocess
+import numpy as np
 import torch.nn as nn
 from quant_layer import QuantLayer
 
@@ -373,7 +375,10 @@ def write_pt_data(filename, filedata):
                 conver = getoneDimList(conver)
             for i in range(len(conver)):
                 if "bn.bn" in filename:
-                    fw.write(str(conver[i]))
+                    hexdata = "{:X}".format(struct.unpack('H', struct.pack('e', conver[i]))[0])
+                    fw.write(str(hexdata))
+                elif "weight" in filename:
+                    fw.write(str(round(conver[i]*40)))
                 else:
                     fw.write(str(conver[i]))
                 fw.write('\n')
@@ -786,6 +791,13 @@ def get_tensorinfo(filename):
                 in_feature_w = line.split("(")[1].split(")")[0].split(",", 4)[3].strip()
                 break
 
+def gen_fpga(filepath):
+    os.system("rm -rf imagenet_fixed_v4_1/config*txt cfg_*txt data_for_fpga/")
+    os.chdir(filepath)
+    os.system("cp -af config*txt ../imagenet_fixed_v4_1/")
+    os.chdir("../imagenet_fixed_v4_1/")
+    os.system("python config_gen_file_v3_0.py -d ../imagenet_fixed_v4_1/ -n imagenet_fixed_v4_1_img6 -f")
+
 def load_pt(pt_path):
     """
     description:
@@ -897,3 +909,4 @@ if __name__ == '__main__':
     os.system("python3 vggnet.py > vggnet.log")
     os.system("mkdir output")
     load_pt(pt_path)
+    gen_fpga("output")
