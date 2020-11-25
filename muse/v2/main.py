@@ -164,8 +164,8 @@ class makenet():
                     read_flag = 1
                     self.fmakenet.write(line)
                 if "= vgg(" in line:
-                    print_vgg = "{}{}{}".format("print(\"vgg_module = \", ", line.strip().split(" ", 1)[0], ")\n")
-                    self.fmakenet.write(print_vgg)
+                    outvgg = "{}{}{}".format("print(\"vgg_module = \", ", line.strip().split(" ")[0], ")\n")
+                    self.fmakenet.write(outvgg)
                     return
 
     def _make_head(self):
