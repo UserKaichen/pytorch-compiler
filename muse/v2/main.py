@@ -3,11 +3,11 @@ import os
 import sys
 import math
 import torch
-import struct
 import shutil
 import threading
 import subprocess
 import numpy as np
+import struct as st
 import torch.nn as nn
 from quant_layer import QuantLayer
 
@@ -375,7 +375,7 @@ def write_pt_data(filename, filedata):
                 conver = getoneDimList(conver)
             for i in range(len(conver)):
                 if "bn.bn" in filename:
-                    hexdata = "{:X}".format(struct.unpack('H', struct.pack('e', conver[i]))[0])
+                    hexdata = "{:X}".format(st.unpack('H', st.pack('e', conver[i]))[0])
                     fw.write(str(hexdata))
                 elif "weight" in filename:
                     fw.write(str(round(conver[i]*40)))
