@@ -96,11 +96,8 @@ class vgg(nn.Module):
         x = self.quant_avg1(x)
         x = self.avgpool_2(x)
         x = self.quant_avg2(x)
-        print("before x.view", x.dim(), x.size())
         x = x.view(x.size(0), -1)
-        print("after x.view", x.dim(), x.size())
         x = self.classifier(x)
-        print("after class", x.dim(), x.size())
         return x
 
     def _initialize_weights(self):
