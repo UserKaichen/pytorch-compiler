@@ -314,6 +314,15 @@ class makenet():
                             self.fcford.append(lines)
 
 def get_layer_info(path, flag):
+    """
+    description:
+                Get specific layer information
+    parameters:
+                path:       The path of vggnet.log
+                flag:       The flag of specific layer
+    return code:
+                layer_info: Get specific layer information
+    """
     layer_cnt = 0
     layer_info = []
     find_flg = flag
