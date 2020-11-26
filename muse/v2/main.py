@@ -2,18 +2,17 @@ import io
 import os
 import sys
 import math
+import time
 import torch
 import shutil
 import threading
 import subprocess
 import numpy as np
 import struct as st
-import torch.nn as nn
-from quant_layer import QuantLayer
 
 in_q  = 5
 layer_cnts = 0
-in_feature_h = 0
+in_feature_h= 0
 in_feature_w = 0
 padding_param = ""
 in_channels_bf = ""
@@ -31,8 +30,8 @@ class makenet():
         self.avginit = []
         self.avgford = []
         self.classname = ""
-        self.fvggnet = open("vggnet.py", "a")
-        self.fmakenet = open("makenet.py", "a")
+        self.fvggnet = open("debug/vggnet.py", "a")
+        self.fmakenet = open("debug/makenet.py", "a")
 
         self.make_config(filename)
         self.make_block(filename)
@@ -44,8 +43,8 @@ class makenet():
         self.make_main(filename)
         self.fmakenet.close()
 
-        os.system("python3 makenet.py > layerinfo")
-        self.splicing_layers("layerinfo")
+        os.system("python3 debug/makenet.py > debug/layerinfo")
+        self.splicing_layers("debug/layerinfo")
         self.bns[0] = self.get_op_code(filename, "bn")
         self.get_op_code(filename, "avgpool")
         self.get_op_code(filename, "weight")
@@ -59,13 +58,17 @@ class makenet():
         self._make_avgpool()
         self._make_tail()
         self.fvggnet.close()
-        print("makenet success")
+        print("make vggnet.py successfully")
 
     def make_config(self, filename):
         with open(filename, 'r') as file:
             while True:
                 line = file.readline()
                 if line.startswith("#") is False:
+                    if "import math" in line:
+                        self.fmakenet.write("import sys\n")
+                    if "from quant_layer import " in line:
+                        self.fmakenet.write("sys.path.append(\"input\")\n")
                     self.fmakenet.write(line)
                 if line.strip() == "}":
                     break
@@ -169,9 +172,11 @@ class makenet():
                     return
 
     def _make_head(self):
+        self.fvggnet.write("import sys\n")
         self.fvggnet.write("import torch\n")
         self.fvggnet.write("import torch.nn as nn\n")
         self.fvggnet.write("import torch.nn.functional as F\n")
+        self.fvggnet.write("sys.path.append(\"input\")\n")
         self.fvggnet.write("from quant_layer import QuantLayer\n\n")
         self.fvggnet.write("class Net(nn.Module):\n")
         self.fvggnet.write("    def __init__(self, num_classes=10):\n")
@@ -371,7 +376,7 @@ def write_pt_data(filename, filedata):
     return code:
                 None
     """
-    path = "{}{}{}".format("./output/", filename, ".txt")
+    path = "{}{}{}".format("debug/output/", filename, ".txt")
     with open(path, 'w') as fw:
         if "quant_" in filename:
             fw.write(str(filedata))
@@ -387,7 +392,7 @@ def write_pt_data(filename, filedata):
                     hexdata = "{:X}".format(st.unpack('H', st.pack('e', conver[i]))[0])
                     fw.write(str(hexdata))
                 elif "weight" in filename:
-                    fw.write(str(round(conver[i]*40)))
+                    fw.write(str(round(conver[i]*25)))
                 else:
                     fw.write(str(conver[i]))
                 fw.write('\n')
@@ -678,9 +683,9 @@ def write_layer_config(layermsg, quant_list):
     """
     layername = layermsg[0].split(":", 1)[1].split(" ", 1)[0].strip('\n')
     if layername == "1":
-        path = "{}{}".format("./output/config", ".txt")
+        path = "{}{}".format("debug/output/config", ".txt")
     else:
-        path = "{}{}{}".format("./output/config_", str(int(layername)-1), ".txt")
+        path = "{}{}{}".format("debug/output/config_", str(int(layername)-1), ".txt")
 
     with open(path, 'w') as fw:
         layer_type = " "
@@ -801,11 +806,14 @@ def get_tensorinfo(filename):
                 break
 
 def gen_fpga(filepath):
-    os.system("rm -rf imagenet_fixed_v4_1/config*txt cfg_*txt data_for_fpga/")
     os.chdir(filepath)
-    os.system("cp -af config*txt ../imagenet_fixed_v4_1/")
-    os.chdir("../imagenet_fixed_v4_1/")
-    os.system("python config_gen_file_v3_0.py -d ../imagenet_fixed_v4_1/ -n imagenet_fixed_v4_1_img6 -f")
+    cmd_list = ["rm -rf config*txt cfg_*txt data_for_fpga/", 
+                "cp -af ../debug/output/config*txt .", 
+                "python config_gen_file_v3_0.py -d ../imagenet_fixed_v4_1/ -n imagenet_fixed_v4_1_img6 -f",
+                "mv data_for_fpga ../output"]
+
+    for i in range(len(cmd_list)):
+        os.system(cmd_list[i])
 
 def load_pt(pt_path):
     """
@@ -821,8 +829,8 @@ def load_pt(pt_path):
     quant_list   = []
     onelayer_cnt = []
 
-    get_tensorinfo("vggnet.py")
-    get_layercount("layerinfo")
+    get_tensorinfo("debug/vggnet.py")
+    get_layercount("debug/layerinfo")
     with open(pt_path, 'rb') as f:
         buffer = io.BytesIO(f.read())
         dict = torch.load(buffer, map_location=torch.device('cpu'))
@@ -847,7 +855,7 @@ def load_pt(pt_path):
         counts = 0
 
     del(layers[0])
-    logpath = "{}{}".format(os.getcwd(), "/vggnet.log")
+    logpath = "{}{}".format(os.getcwd(), "/debug/vggnet.log")
     for i in range(layer_cnts):
         layername = "{}{}".format("layer_num:", str(i+1))
         layer_msg = get_layer_info(logpath, layername)
@@ -874,10 +882,17 @@ def checkfile(filelist):
                 None
     """
     for i in range(len(filelist)):
-        if not os.path.exists(filelist[i]):
-            print("%s not find in %s directory..." %(filelist[i], os.getcwd()))
+        file = "input/"
+        if "imagenet_fixed_v4_1" in filelist[i]:
+            file = ""
+        name = "{}{}".format(file, filelist[i])
+        if not os.path.exists(name):
+            print("%s not found...\nPlease try again!" %name)
+            sys.exit(1)
+    
+    print("checkfile successfully")
 
-def cleanup(cleanlist):
+def clean_ups(cleanlist):
     """
     description:
                 Clean up working directory
@@ -887,13 +902,32 @@ def cleanup(cleanlist):
                 None
     """
     for i in range(len(cleanlist)):
-        if os.path.exists(cleanlist[i]):
-            if os.path.isdir(cleanlist[i]):
-                shutil.rmtree(cleanlist[i])
+        if not os.path.exists("debug"):
+            os.mkdir("debug")
+        output = "{}{}".format("debug/", cleanlist[i])
+        if "data_for_fpga" in cleanlist[i]:
+            output = "{}{}".format("output/", cleanlist[i])
+        if os.path.exists(output):
+            if os.path.isdir(output):
+                shutil.rmtree(output)
             else:
-                os.remove(cleanlist[i])
-            print("%s in %s directory clean success" %(cleanlist[i], os.getcwd()))
+                os.remove(output)
+            print("%s clean success" %(output))
+
+    print("clean_ups successfully")
         
+def output(cnt, total, msg):
+    filling = []
+    for i in range(len(os.getcwd()) + 30):
+        filling.append("=")
+    print(''.join(filling))
+    print('[Step %d/%d] %s' %(cnt, total, msg))
+    print(''.join(filling))
+    
+def schedule(i, start, end):
+    print('******************************')
+    print('Step %d Running time: %.7s s'%(i, end-start))
+    print('******************************')
 
 if __name__ == '__main__':
     """
@@ -904,18 +938,54 @@ if __name__ == '__main__':
     return code: 
                 None
     """
-    fileslist = ["vgg_imagenet.py", "vgg_imagenet2.pt", "quant_layer.py"]
-    cleanlist = ["output", "makenet.py", "vggnet.py", "vggnet.log", "layerinfo"]
+    cleanlist = ["makenet.py", "vggnet.py", "vggnet.log", "layerinfo", "output", "data_for_fpga"]
+    fileslist = ["imagenet_fixed_v4_1", "vgg_imagenet.py", "vgg_imagenet2.pt", "quant_layer.py"]
 
     if (len(sys.argv) != 2) or not os.path.exists(sys.argv[1]):
-        pt_path = "./vgg_imagenet2.pt"
+        pt_path = "input/vgg_imagenet2.pt"
     else:
         pt_path = sys.argv[1]
 
-    cleanup(cleanlist)
+    start = time.time()
+    allstart = start
+    output(1, 6, "Check the necessary files...")
     checkfile(fileslist)
-    makenet("vgg_imagenet.py")
-    os.system("python3 vggnet.py > vggnet.log")
-    os.system("mkdir output")
+    end = time.time()
+    schedule(1, start, end)
+
+    start = time.time()
+    output(2, 6, 'Clean the necessary files...')
+    clean_ups(cleanlist)
+    end = time.time()
+    schedule(2, start, end)
+
+    start = time.time()
+    output(3, 6, 'Make network model file...')
+    makenet("./input/vgg_imagenet.py")
+    end = time.time()
+    schedule(3, start, end)
+
+    start = time.time()
+    output(4, 6, 'Run the network model file...')
+    os.system("python3 debug/vggnet.py > debug/vggnet.log")
+    print("run vggnet.py successfully")
+    end = time.time()
+    schedule(4, start, end)
+
+    start = time.time()
+    os.system("mkdir -p debug/output output")
+    output(5, 6, 'Load pt file and format output...')
     load_pt(pt_path)
-    gen_fpga("output")
+    print("pt data and config file successfully")
+    end = time.time()
+    schedule(5, start, end)
+
+    start = time.time()
+    output(6, 6, 'Make the bin file needed by fpga...')
+    gen_fpga("imagenet_fixed_v4_1")
+    print("generate fpga data successfully")
+    end = time.time()
+    schedule(6, start, end)
+    allend = end
+
+    print('Make data successfully! It costs %.2f Seconds'%(allend - allstart))
