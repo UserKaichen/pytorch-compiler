@@ -5,7 +5,6 @@ Custom vgg for MUSEv2 design
 import math
 import torch
 import torch.nn as nn
-
 from quant_layer import QuantLayer
 
 
