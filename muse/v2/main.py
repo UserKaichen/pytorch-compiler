@@ -917,6 +917,16 @@ def clean_ups(cleanlist):
     print("clean_ups successfully")
         
 def output(cnt, total, msg):
+    """
+    description:
+                Output step progress bar
+    parameters:
+                cnt:   Specify the count of steps
+                total: Total counts of steps
+                msg:   Output the message of the step progress bar
+    return code:
+                None
+    """
     filling = []
     for i in range(len(os.getcwd()) + 30):
         filling.append("=")
@@ -925,9 +935,20 @@ def output(cnt, total, msg):
     print(''.join(filling))
     
 def schedule(i, start, end):
+    """
+    description:
+                Output time progress bar
+    parameters:
+                i:     Specific step time
+                start: Specify the step start time
+                end:   Specify the step end time
+    return code:
+                None
+    """
     print('******************************')
     print('Step %d Running time: %.7s s'%(i, end-start))
     print('******************************')
+
 
 if __name__ == '__main__':
     """
