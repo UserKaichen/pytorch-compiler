@@ -809,7 +809,8 @@ def gen_fpga(filepath):
     os.chdir(filepath)
     cmd_list = ["rm -rf config*txt cfg_*txt data_for_fpga/", 
                 "cp -af ../debug/output/config*txt .", 
-                "python config_gen_file_v3_0.py -d ../imagenet_fixed_v4_1/ -n imagenet_fixed_v4_1_img6 -f",
+                "python ../input/config_gen_file_v3_0.py -d ../imagenet_fixed_v4_1/ \
+                       -n imagenet_fixed_v4_1_img6 -f",
                 "mv data_for_fpga ../output"]
 
     for i in range(len(cmd_list)):
