@@ -10,16 +10,9 @@ import subprocess
 import numpy as np
 import struct as st
 
-in_q  = 5
-layer_cnts = 0
-in_feature_h= 0
-in_feature_w = 0
-padding_param = ""
-in_channels_bf = ""
-out_channels_bf = ""
 
 class makenet():
-    def __init__(self, filename):
+    def __init__(self):
         self.bns = [""]
         self.layer = []
         self.convs = []
@@ -32,33 +25,6 @@ class makenet():
         self.classname = ""
         self.fvggnet = open("debug/vggnet.py", "a")
         self.fmakenet = open("debug/makenet.py", "a")
-
-        self.make_config(filename)
-        self.make_block(filename)
-        self.make_class(filename)
-        self.make_layers(filename)
-        self.make_padding(filename)
-        self.make_forward(filename)
-        self.make_weight(filename)
-        self.make_main(filename)
-        self.fmakenet.close()
-
-        os.system("python3 debug/makenet.py > debug/layerinfo")
-        self.splicing_layers("debug/layerinfo")
-        self.bns[0] = self.get_op_code(filename, "bn")
-        self.get_op_code(filename, "avgpool")
-        self.get_op_code(filename, "weight")
-        self.get_op_code(filename, "quant")
-        self.get_op_code(filename, "fc")
-
-        self._make_head()
-        self._make_init()
-        self._make_padding(filename)
-        self._make_forward()
-        self._make_avgpool()
-        self._make_tail()
-        self.fvggnet.close()
-        print("make vggnet.py successfully")
 
     def make_config(self, filename):
         with open(filename, 'r') as file:
@@ -318,497 +284,511 @@ class makenet():
                         if lines.startswith("#") is False:
                             self.fcford.append(lines)
 
-def get_layer_info(path, flag):
-    """
-    description:
-                Get specific layer information
-    parameters:
-                path:       The path of vggnet.log
-                flag:       The flag of specific layer
-    return code:
-                layer_info: Get specific layer information
-    """
-    layer_cnt = 0
-    layer_info = []
-    find_flg = flag
+class load_pt():
+    def __init__(self):
+        self.in_q = "5"
+        self.layermsg = ""
+        self.layer_cnts = 0
+        self.in_feature_h = 0
+        self.in_feature_w = 0
+        self.padding_param = ""
+        self.layers = [["", ""]]
+        self.in_channels_bf = ""
+        self.out_channels_bf = ""
 
-    if int(str(find_flg).split(":", 1)[1]) == 0:
-        print("please do not send layer_num:0")
-        exit(0)
-    next_flg = "{}{}".format("layer_num:", int(str(find_flg).split(":", 1)[1]) + 1)
-    with open(path, 'r') as file_read:
-        for line in file_read:
-            if flag in line:
-                layer_cnt += 1
-            if next_flg in line:
-                break
-            if "compiler_end" in line:
-                break
-            if layer_cnt == 1:
-                layer_info.append(line)
 
-    return layer_info
+    def get_layer_info(self, path, flag):
+        """
+        description:
+                    Get specific layer information
+        parameters:
+                    path:       The path of vggnet.log
+                    flag:       The flag of specific layer
+        return code:
+                    layer_info: Get specific layer information
+        """
+        layer_cnt = 0
+        layer_info = []
+        find_flg = flag
 
-def getoneDimList(newlist):
-    """
-    description:
-                Convert high-dimensional list to one-dimensional
-    parameters:
-                newlist:    High-dimensional list name
-    return code:
-                oneDimList: one-dimensional list name
-    """
-    oneDimList = []
-    for element in newlist:
-        if not isinstance(element, list):
-            oneDimList.append(element)
-        else:
-            oneDimList.extend(getoneDimList(element))
-    return oneDimList
+        if int(str(find_flg).split(":", 1)[1]) == 0:
+            print("please do not send layer_num:0")
+            exit(0)
+        next_flg = "{}{}".format("layer_num:", int(str(find_flg).split(":", 1)[1]) + 1)
+        with open(path, 'r') as file_read:
+            for line in file_read:
+                if flag in line:
+                    layer_cnt += 1
+                if next_flg in line:
+                    break
+                if "compiler_end" in line:
+                    break
+                if layer_cnt == 1:
+                    layer_info.append(line)
 
-def write_pt_data(filename, filedata):
-    """
-    description:
-                Write pt data to file
-    parameters:
-                filename: Relative path of tensor file
-                filedata: Pt data of Relative files
-    return code:
-                None
-    """
-    path = "{}{}{}".format("debug/output/", filename, ".txt")
-    with open(path, 'w') as fw:
-        if "quant_" in filename:
-            fw.write(str(filedata))
-        else:
-            conver = filedata.tolist()
-            if filedata.dim() == 0:
-                fw.write(str(conver))
-                return
-            elif filedata.dim() > 1:
-                conver = getoneDimList(conver)
-            for i in range(len(conver)):
-                if "bn.bn" in filename:
-                    hexdata = "{:X}".format(st.unpack('H', st.pack('e', conver[i]))[0])
-                    fw.write(str(hexdata))
-                elif "weight" in filename:
-                    fw.write(str(round(conver[i]*25)))
-                else:
-                    fw.write(str(conver[i]))
-                fw.write('\n')
+        return layer_info
 
-    print("%s write data success" % path)
-
-def write_to_file(fw, config):
-    """
-    description:
-                Write configuration information to file
-    parameters:
-                filename: Relative path of tensor file
-    return code:
-                None
-    """
-    for i in range(len(config)):
-        if "\n" in config[i]:
-            fw.write("\n")
-            continue
-        fw.write(config[i])
-        fw.write("\n")
-
-def out_to_in(out_feature_h, out_feature_w, in_channels, out_channels, type):
-    """
-    description:
-                The output of the previous layer to the input of the next layer
-    parameters:
-                out_feature_w:
-                out_feature_h:
-                in_channels:   Number of channels in the input image
-                out_channels:  Number of channels produced by the convolution
-                type:          type of each layer
-    return code:
-                None
-    """
-    global in_feature_h, in_feature_w
-    global in_channels_bf, out_channels_bf
-
-    if type == "pool" and int(out_feature_h) == 7 and "padding param: " in padding_param:
-        in_feature_h = str(int(padding_param.split(" ", 6)[4].split(":")[1]))
-        in_feature_w = str(int(padding_param.split(" ", 6)[5].split(":")[1]))
-    else:
-        in_feature_h = out_feature_h
-        in_feature_w = out_feature_w
-    if type != "pool":
-        in_channels_bf = in_channels
-        out_channels_bf = out_channels
-
-def get_all_params(config, param):
-    """
-    description:
-                Get all the parameters
-    parameters:
-                config:        Configuration information list for input
-                param:         Parameter information list
-    return code:
-                config:        Configuration information list for output
-                out_feature_w:
-                out_feature_h:
-                kernel_size_x:
-                kernel_size_y:
-                in_channels:   Number of channels in the input image
-                out_channels:  Number of channels produced by the convolution
-                stride_x:
-                stride_y:
-    """
-    global              out_channels_bf
-    stride_x      = stride_y      =  ""
-    in_channels   = out_channels  =  ""
-    out_feature_w = out_feature_h =  ""
-    kernel_size_x = kernel_size_y =  ""
-
-    for i in range(len(param)):
-        if "in_channels" in param[i] or "in_features_y" in param[i]:
-            in_channels = "{}{}".format("input channel num  = ", param[i].split(":")[1].strip())
-            if in_channels.strip() == out_channels_bf or len(out_channels_bf) == 0:
-                config.append(in_channels)
+    def getoneDimList(self, newlist):
+        """
+        description:
+                    Convert high-dimensional list to one-dimensional
+        parameters:
+                    newlist:    High-dimensional list name
+        return code:
+                    oneDimList: one-dimensional list name
+        """
+        oneDimList = []
+        for element in newlist:
+            if not isinstance(element, list):
+                oneDimList.append(element)
             else:
-                config.append("{}{}".format("input channel num  = ", out_channels_bf.split("=")[1].strip()))
-        elif "out_channels" in param[i] or "out_features_y" in param[i]:
-            out_channels = "{}{}".format("output channel num = ", param[i].split(":")[1].strip())
-            config.append(out_channels)
-        elif "feature_map_size_x" in param[i]:
-            out_feature_h = param[i].split(":")[1].strip()
-        elif "feature_map_size_y" in param[i]:
-            out_feature_w = param[i].split(":")[1].strip()
-        elif "stride_x" in param[i]:
-            stride_x = "{}{}".format("stride_x = ", param[i].split(":")[1].strip())
-        elif "stride_y" in param[i]:
-            stride_y = "{}{}".format("stride_y = ", param[i].split(":")[1].strip())
-        elif "kernel_size_x" in param[i]:
-            kernel_size_x = param[i].split(":")[1].strip()
-        elif "kernel_size_y" in param[i]:
-            kernel_size_y = param[i].split(":")[1].strip()
+                oneDimList.extend(self.getoneDimList(element))
+        return oneDimList
 
-    return config, out_feature_w, out_feature_h, kernel_size_x, kernel_size_y, \
-           in_channels, out_channels, stride_x, stride_y
+    def write_pt_data(self, filename, filedata, scale):
+        """
+        description:
+                    Write pt data to file
+        parameters:
+                    filename: Relative path of tensor file
+                    filedata: Pt data of Relative files
+                    scale:    The scale of weight
+        return code:
+                    None
+        """
+        path = "{}{}{}".format("debug/output/", filename, ".txt")
+        with open(path, 'w') as fw:
+            if "quant_" in filename:
+                fw.write(str(filedata))
+            else:
+                conver = filedata.tolist()
+                if filedata.dim() == 0:
+                    fw.write(str(conver))
+                    return
+                elif filedata.dim() > 1:
+                    conver = self.getoneDimList(conver)
+                for i in range(len(conver)):
+                    if "bn.bn" in filename or ".bias" in filename:
+                        hexdata = "{:X}".format(st.unpack('H', st.pack('e', conver[i]))[0])
+                        fw.write(str(hexdata))
+                    elif "weight" in filename:
+                        scalelist = scale.tolist()
+                        weight = round(conver[i] / scalelist)
+                        fw.write(str(weight))
+                    else:
+                        fw.write(str(conver[i]))
+                    fw.write('\n')
 
-def write_common_params(config, param, in_q, out_q, relu, layer_type):
-    """
-    description:
-                Write common parameters to the configuration file
-    parameters:
-                config:        Configuration information list
-                param:         Parameter information list
-                in_q:          input q number for quantization
-                out_q:         output q number for quantization
-                relu:          relu information
-                layer_type:    the type of each layer
-    return code:
-                out_feature_w:
-                out_feature_h:
-                in_channels:   Number of channels in the input image
-                out_channels:  Number of channels produced by the convolution
-    """
-    global in_feature_h, in_feature_w
+        print("%s write data success" % path)
 
-    config, out_feature_w, out_feature_h, kernel_size_x, kernel_size_y, in_channels, \
-            out_channels, stride_x, stride_y = get_all_params(config, param)
+    def write_to_file(self, fw, config):
+        """
+        description:
+                    Write configuration information to file
+        parameters:
+                    filename: Relative path of tensor file
+                    config:   Configuration to be written to file
+        return code:
+                    None
+        """
+        for i in range(len(config)):
+            if "\n" in config[i]:
+                fw.write("\n")
+                continue
+            fw.write(config[i])
+            fw.write("\n")
 
-    if layer_type == "pool":
-        config.append(in_channels_bf)
-        config.append(out_channels_bf)
-        ratio = int(kernel_size_x)
-        out_feature_h = str(int(int(float(in_feature_h)) / ratio))
-        out_feature_w = str(int(int(float(in_feature_w)) / ratio))
-    config.append("{}{}".format("input feature_h = ", in_feature_h))
-    config.append("{}{}".format("input feature_w = ", in_feature_w))
-    if layer_type != "pool":
-        if (layer_type == "fc"):
-            if in_feature_h == "1" and in_feature_w == "1":
-                kernel_size_x = out_feature_h = in_feature_h
-                kernel_size_y = out_feature_w = in_feature_w
-    config.append("{}{}".format("output feature_h = ", out_feature_h))
-    config.append("{}{}".format("output feature_w = ", out_feature_w))
-    config.append("\n")
-    if layer_type == "conv":
-        config.append("padding = 1")
-    else:
-        config.append("padding = 0")
-    config.append(in_q)
-    config.append(out_q)
-    config.append("{}{}{}{}".format("kernel size = ", kernel_size_x, "×", kernel_size_y))
-    if "relu " in relu:
-        config.append(relu)
-    else:
-        config.append("relu 0")
-    config.append("w_quan   \"MIX\"")
-    config.append("\n")
-
-    if layer_type != "pool":
-        config.append("【Pattern Pruning config】")
-        config.append("pattern_dic.txt存的是16种pattern所对应的mask，顺序是先横着走再换行；pattern_idx所对应的是每个kernel所采用的pattern编号，顺序与weight顺序一致；weight.txt是不做压缩的，仅作参考；weight_nonzero是最终给到芯片的权重，已经做了4pattern压缩存储。")
-        config.append("\n")
-        config.append("pattern: 9-pattern")
-        config.append("\n")
-        config.append("BN中，k=0.01 (0x211F)， b=0")
-        config.append("\n")
-
-    return out_feature_w, out_feature_h, in_channels, out_channels
-
-def write_conv_config(fw, layermsg):
-    """
-    description:
-                Write conv layer configuration information
-    parameters:
-                fw:         File descriptor of the configuration file
-                layer_msg:  Compiler output parameters for each layer
-    return code:
-                None
-    """
-    in_q      = out_q   =  ""
-    layer_num = relu    =  ""
-    param     = config  =  []
-
-    for i in range(len(layermsg)):
-        if layermsg[i].startswith("layer_num:") is True:
-            layer_num = layermsg[i].split(" ")[0].strip().split(":")[1]
-        elif "in_channels" in layermsg[i]:
-            param = layermsg[i].split(" ")
-        elif "relu param" in layermsg[i]:
-            relu = "relu √"
-        elif "in_q =" in layermsg[i]:
-            in_q = layermsg[i]
-        elif "out_q =" in layermsg[i]:
-            out_q = layermsg[i]
-
-    out_feature_w, out_feature_h, in_channels, out_channels = \
-    write_common_params(config, param, in_q, out_q, relu, "conv")
-
-    config.append("{}{}{}".format("act0 file               : layers.", str(int(layer_num)-1), ".conv.input.6.txt"))
-    config.append("{}{}{}".format("output file             : layers.", str(int(layer_num)-1), ".quant.output.6.txt"))
-    config.append("{}{}{}".format("weight file             : layers.", str(int(layer_num)-1), ".conv.weight.txt"))
-    config.append("{}{}{}".format("bn k file               : layers.", str(int(layer_num)-1), ".bn.bn_k.txt"))
-    config.append("{}{}{}".format("bn b file               : layers.", str(int(layer_num)-1), ".bn.bn_b.txt"))
-
-    write_to_file(fw, config)
-    out_to_in(out_feature_h, out_feature_w , in_channels, out_channels, "conv")
-
-def write_pool_config(fw, layermsg):
-    """
-    description:
-                Write pool layer configuration information
-    parameters:
-                fw:         File descriptor of the configuration file
-                layer_msg:  Compiler output parameters for each layer
-    return code:
-                None
-    """
-    in_q     = out_q  = ""
-    param    = config = []
-    poolname = "Maxpooling"
-
-    for i in range(len(layermsg)):
-        if "padding param:" in layermsg[i]:
-            global padding_param
-            padding_param = layermsg[i]
-        elif "param:" in layermsg[i]:
-            param = layermsg[i].split(" ")
-        if "avgpool" in layermsg[i]:
-            poolname = "Average pooling"
-        elif "in_q =" in layermsg[i]:
-            in_q = layermsg[i]
-        elif "out_q =" in layermsg[i]:
-            out_q = layermsg[i]
-
-    out_feature_w, out_feature_h, in_channels, out_channels = \
-    write_common_params(config, param, in_q, out_q, "", "pool")
-
-    write_to_file(fw, config)
-    fw.write(poolname)
-
-    out_to_in(out_feature_h, out_feature_w, in_channels, out_channels, "pool")
-
-def write_fc_config(fw, layermsg, quant_list):
-    """
-    description:
-                Write fc layer configuration information
-    parameters:
-                fw:         File descriptor of the configuration file
-                layer_msg:  Compiler output parameters for each layer
-                quant_list: Save the list of quantlayer and classifier
-    return code:
-                None
-    """
-    in_q    = out_q  = ""
-    fc_name = relu   = ""
-    param   = config = []
-
-    for i in range(len(layermsg)):
-        if " param:" in layermsg[i]:
-            fc_name = layermsg[i].split(" ")[0].strip()
-            param = layermsg[i].split(" ")
-        elif "in_q =" in layermsg[i]:
-            in_q = layermsg[i]
-        elif "out_q =" in layermsg[i]:
-            out_q = layermsg[i]
-        elif "ReLU" in layermsg[i]:
-            relu = "relu √"
-
-    out_feature_w, out_feature_h, in_channels, out_channels = \
-    write_common_params(config, param, in_q, out_q, relu, "fc")
-
-    classifier = []
-    for i in range(len(quant_list)):
-        if (i % 2) == 0:
-            if "classifier" in quant_list[i] and "weight" in quant_list[i]:
-                classifier.append("{}{}{}".format(quant_list[i].rsplit(".")[0], ".",quant_list[i].rsplit(".")[1]))
-
-    config.append("{}{}{}".format("act0 file               : ", classifier[int(fc_name[2])-1], ".input.6.txt"))
-    config.append("{}{}{}{}".format("output file             : ", "quant_", fc_name, ".output.6.txt"))
-    config.append("{}{}{}".format("weight file             : ", classifier[int(fc_name[2])-1], ".weight.txt"))
-    config.append("{}{}{}".format("bn k file               : ", classifier[int(fc_name[2])-1], ".k.txt"))
-    config.append("{}{}{}".format("bn b file               : ", classifier[int(fc_name[2])-1], ".bias.txt"))
-
-    write_to_file(fw, config)
-    out_to_in(out_feature_h, out_feature_w,in_channels, out_channels, "fc")
-
-def write_layer_config(layermsg, quant_list):
-    """
-    description:
-                Write configuration information for each layer
-    parameters:
-                quant_list: Save the list of quantlayer and classifier
-                layer_msg:  Compiler output parameters for each layer
-    return code:
-                None
-    """
-    layername = layermsg[0].split(":", 1)[1].split(" ", 1)[0].strip('\n')
-    if layername == "1":
-        path = "{}{}".format("debug/output/config", ".txt")
-    else:
-        path = "{}{}{}".format("debug/output/config_", str(int(layername)-1), ".txt")
-
-    with open(path, 'w') as fw:
-        layer_type = " "
-        for i in range(len(layermsg)):
-            if "layer type:" in layermsg[i]:
-                if layermsg[i].startswith("layer_num:1 ") is True:
-                    layer_type = layermsg[i].split(":", 3)[2]
-                else:
-                    layer_type = layermsg[i].split(":", 5)[2].split(" ")[0]
-        if "conv" in layer_type:
-            write_conv_config(fw, layermsg)
-        elif "pool" in layer_type:
-            write_pool_config(fw, layermsg) 
-        elif "fc" in layer_type:
-            write_fc_config(fw, layermsg, quant_list)
+    def out_to_in(self, out_feature_h, out_feature_w, in_channels, out_channels, type):
+        """
+        description:
+                    The output of the previous layer to the input of the next layer
+        parameters:
+                    out_feature_h: output feature of in the high direction
+                    out_feature_w: output feature of in the width direction
+                    in_channels:   Number of channels in the input image
+                    out_channels:  Number of channels produced by the convolution
+                    type:          type of each layer
+        return code:
+                    None
+        """
+        if type == "pool" and int(out_feature_h) == 7 and "padding param: " in self.padding_param:
+            self.in_feature_h = str(int(self.padding_param.split(" ", 6)[4].split(":")[1]))
+            self.in_feature_w = str(int(self.padding_param.split(" ", 6)[5].split(":")[1]))
         else:
-            print("Unknown layer type...")
-            return
+            self.in_feature_h = out_feature_h
+            self.in_feature_w = out_feature_w
+        if type != "pool":
+            self.in_channels_bf = in_channels
+            self.out_channels_bf = out_channels
 
-    print("%s write config success" % path)
+    def get_all_params(self, config, param):
+        """
+        description:
+                    Get all the parameters
+        parameters:
+                    config:        Configuration information list for input
+                    param:         Parameter information list
+        return code:
+                    config:        Configuration information list for output
+                    out_feature_h: output feature of in the high direction
+                    out_feature_w: output feature of in the width direction
+                    kernel_size_x: Size of the convolving kernel in the x direction
+                    kernel_size_y: Size of the convolving kernel in the y direction
+                    in_channels:   Number of channels in the input image
+                    out_channels:  Number of channels produced by the convolution
+                    stride_x:      Stride of the convolution in the x direction  
+                    stride_y:      Stride of the convolution in the y direction  
+        """
+        stride_x = stride_y = ""
+        in_channels = out_channels = ""
+        out_feature_w = out_feature_h = ""
+        kernel_size_x = kernel_size_y = ""
 
-def deal_out_in_q(quant_list, data, layer_msg):
-    """
-    description:
-                Handle out_q and in_q function
-    parameters:
-                quant_list: Save the list of quantlayer and classifier
-                data:       Data of each quantlayer or fclayer
-                layer_msg:  Compiler output parameters for each layer
-    return code:
-                None
-    """
-    bits = 7
-    global in_q
-    if "pool" in layer_msg:
-        out_q = in_q
-    else:
-        out_q = bits - math.ceil(math.log2(0.5*data))
+        for i in range(len(param)):
+            if "in_channels" in param[i] or "in_features_y" in param[i]:
+                in_channels = "{}{}".format("input channel num  = ", param[i].split(":")[1].strip())
+                if in_channels.strip() == self.out_channels_bf or len(self.out_channels_bf) == 0:
+                    config.append(in_channels)
+                else:
+                    config.append("{}{}".format("input channel num  = ", self.out_channels_bf.split("=")[1].strip()))
+            elif "out_channels" in param[i] or "out_features_y" in param[i]:
+                out_channels = "{}{}".format("output channel num = ", param[i].split(":")[1].strip())
+                config.append(out_channels)
+            elif "feature_map_size_x" in param[i]:
+                out_feature_h = param[i].split(":")[1].strip()
+            elif "feature_map_size_y" in param[i]:
+                out_feature_w = param[i].split(":")[1].strip()
+            elif "stride_x" in param[i]:
+                stride_x = "{}{}".format("stride_x = ", param[i].split(":")[1].strip())
+            elif "stride_y" in param[i]:
+                stride_y = "{}{}".format("stride_y = ", param[i].split(":")[1].strip())
+            elif "kernel_size_x" in param[i]:
+                kernel_size_x = param[i].split(":")[1].strip()
+            elif "kernel_size_y" in param[i]:
+                kernel_size_y = param[i].split(":")[1].strip()
 
-    layer_msg.append("{}{}".format("in_q = ", str(in_q)))
-    layer_msg.append("{}{}".format("out_q = ", str(out_q)))
-    in_q = out_q
-    write_config = threading.Thread(target=write_layer_config, args=(layer_msg, quant_list))
-    write_config.start()
-    write_config.join()
+        return config, out_feature_w, out_feature_h, kernel_size_x, kernel_size_y, \
+               in_channels, out_channels, stride_x, stride_y
 
-def splicing_output(num, flag, layerlist, layer_msg, quant_list):
-    """
-    description:
-                Format splicing output
-    parameters:
-                num:        Number of each layer
-                flag:       Start mark of each layer (subscript)
-                layerlist:  Save a list of all layer data
-                layer_msg:  Compiler output parameters for each layer
-                quant_list: Save the list of quantlayer and classifier
-    return code:
-                None
-    """
-    for i in range(len(layerlist)):
-        if "quant.alpha" in layerlist[i][0]:
-            data = layerlist[i][1]
-            if num == 0:
-                deal_out_in_q(quant_list, data, layer_msg)
+    def write_common_params(self, config, param, in_q, out_q, relu, layer_type):
+        """
+        description:
+                    Write common parameters to the configuration file
+        parameters:
+                    config:        Configuration information list
+                    param:         Parameter information list
+                    in_q:          input q number for quantization
+                    out_q:         output q number for quantization
+                    relu:          relu information
+                    layer_type:    the type of each layer
+        return code:
+                    out_feature_h: output feature of in the high direction
+                    out_feature_w: output feature of in the width direction
+                    in_channels:   Number of channels in the input image
+                    out_channels:  Number of channels produced by the convolution
+        """
+        config, out_feature_w, out_feature_h, kernel_size_x, kernel_size_y, in_channels, \
+        out_channels, stride_x, stride_y = self.get_all_params(config, param)
+
+        if layer_type == "pool":
+            config.append(self.in_channels_bf)
+            config.append(self.out_channels_bf)
+            ratio = int(kernel_size_x)
+            out_feature_h = str(int(int(float(self.in_feature_h)) / ratio))
+            out_feature_w = str(int(int(float(self.in_feature_w)) / ratio))
+        config.append("{}{}".format("input feature_h = ", self.in_feature_h))
+        config.append("{}{}".format("input feature_w = ", self.in_feature_w))
+        if layer_type != "pool":
+            if (layer_type == "fc"):
+                if self.in_feature_h == "1" and self.in_feature_w == "1":
+                    kernel_size_x = out_feature_h = self.in_feature_h
+                    kernel_size_y = out_feature_w = self.in_feature_w
+        config.append("{}{}".format("output feature_h = ", out_feature_h))
+        config.append("{}{}".format("output feature_w = ", out_feature_w))
+        config.append("\n")
+        if layer_type == "conv":
+            config.append("padding = 1")
+        else:
+            config.append("padding = 0")
+        config.append(in_q)
+        config.append(out_q)
+        config.append("{}{}{}{}".format("kernel size = ", kernel_size_x, "×", kernel_size_y))
+        if "relu " in relu:
+            config.append(relu)
+        else:
+            config.append("relu 0")
+        config.append("w_quan   \"MIX\"")
+        config.append("\n")
+
+        if layer_type != "pool":
+            config.append("【Pattern Pruning config】")
+            config.append(
+                "pattern_dic.txt存的是16种pattern所对应的mask，顺序是先横着走再换行；pattern_idx所对应的是每个kernel所采用的pattern编号，顺序与weight顺序一致；weight.txt是不做压缩的，仅作参考；weight_nonzero是最终给到芯片的权重，已经做了4pattern压缩存储。")
+            config.append("\n")
+            config.append("pattern: 9-pattern")
+            config.append("\n")
+            config.append("BN中，k=0.01 (0x211F)， b=0")
+            config.append("\n")
+
+        return out_feature_w, out_feature_h, in_channels, out_channels
+
+    def write_conv_config(self, fw):
+        """
+        description:
+                    Write conv layer configuration information
+        parameters:
+                    fw:         File descriptor of the configuration file
+        return code:
+                    None
+        """
+        in_q = out_q = ""
+        layer_num = relu = ""
+        param = config = []
+
+        for i in range(len(self.layermsg)):
+            if self.layermsg[i].startswith("layer_num:") is True:
+                layer_num = self.layermsg[i].split(" ")[0].strip().split(":")[1]
+            elif "in_channels" in self.layermsg[i]:
+                param = self.layermsg[i].split(" ")
+            elif "relu param" in self.layermsg[i]:
+                relu = "relu √"
+            elif "in_q =" in self.layermsg[i]:
+                in_q = self.layermsg[i]
+            elif "out_q =" in self.layermsg[i]:
+                out_q = self.layermsg[i]
+
+        out_feature_w, out_feature_h, in_channels, out_channels = \
+            self.write_common_params(config, param, in_q, out_q, relu, "conv")
+
+        config.append(
+            "{}{}{}".format("act0 file               : layers.", str(int(layer_num) - 1), ".conv.input.6.txt"))
+        config.append(
+            "{}{}{}".format("output file             : layers.", str(int(layer_num) - 1), ".quant.output.6.txt"))
+        config.append("{}{}{}".format("weight file             : layers.", str(int(layer_num) - 1), ".conv.weight.txt"))
+        config.append("{}{}{}".format("bn k file               : layers.", str(int(layer_num) - 1), ".bn.bn_k.txt"))
+        config.append("{}{}{}".format("bn b file               : layers.", str(int(layer_num) - 1), ".bn.bn_b.txt"))
+
+        self.write_to_file(fw, config)
+        self.out_to_in(out_feature_h, out_feature_w, in_channels, out_channels, "conv")
+
+    def write_pool_config(self, fw):
+        """
+        description:
+                    Write pool layer configuration information
+        parameters:
+                    fw:         File descriptor of the configuration file
+        return code:
+                    None
+        """
+        in_q = out_q = ""
+        param = config = []
+        poolname = "Maxpooling"
+
+        for i in range(len(self.layermsg)):
+            if "padding param:" in self.layermsg[i]:
+                self.padding_param = self.layermsg[i]
+            elif "param:" in self.layermsg[i]:
+                param = self.layermsg[i].split(" ")
+            if "avgpool" in self.layermsg[i]:
+                poolname = "Average pooling"
+            elif "in_q =" in self.layermsg[i]:
+                in_q = self.layermsg[i]
+            elif "out_q =" in self.layermsg[i]:
+                out_q = self.layermsg[i]
+
+        out_feature_w, out_feature_h, in_channels, out_channels = \
+            self.write_common_params(config, param, in_q, out_q, "", "pool")
+
+        self.write_to_file(fw, config)
+        fw.write(poolname)
+
+        self.out_to_in(out_feature_h, out_feature_w, in_channels, out_channels, "pool")
+
+    def write_fc_config(self, fw, quant_list):
+        """
+        description:
+                    Write fc layer configuration information
+        parameters:
+                    fw:         File descriptor of the configuration file
+                    quant_list: Save the list of quantlayer and classifier
+        return code:
+                    None
+        """
+        in_q = out_q = ""
+        fc_name = relu = ""
+        param = config = []
+
+        for i in range(len(self.layermsg)):
+            if " param:" in self.layermsg[i]:
+                fc_name = self.layermsg[i].split(" ")[0].strip()
+                param = self.layermsg[i].split(" ")
+            elif "in_q =" in self.layermsg[i]:
+                in_q = self.layermsg[i]
+            elif "out_q =" in self.layermsg[i]:
+                out_q = self.layermsg[i]
+            elif "ReLU" in self.layermsg[i]:
+                relu = "relu √"
+
+        out_feature_w, out_feature_h, in_channels, out_channels = \
+            self.write_common_params(config, param, in_q, out_q, relu, "fc")
+
+        classifier = []
+        for i in range(len(quant_list)):
+            if (i % 2) == 0:
+                if "classifier" in quant_list[i] and "weight" in quant_list[i]:
+                    classifier.append("{}{}{}".format(quant_list[i].rsplit(".")[0], ".", quant_list[i].rsplit(".")[1]))
+
+        config.append("{}{}{}".format("act0 file               : ", classifier[int(fc_name[2]) - 1], ".input.6.txt"))
+        config.append("{}{}{}{}".format("output file             : ", "quant_", fc_name, ".output.6.txt"))
+        config.append("{}{}{}".format("weight file             : ", classifier[int(fc_name[2]) - 1], ".weight.txt"))
+        config.append("{}{}{}".format("bn k file               : ", classifier[int(fc_name[2]) - 1], ".k.txt"))
+        config.append("{}{}{}".format("bn b file               : ", classifier[int(fc_name[2]) - 1], ".bias.txt"))
+
+        self.write_to_file(fw, config)
+        self.out_to_in(out_feature_h, out_feature_w, in_channels, out_channels, "fc")
+
+    def write_layer_config(self, quant_list):
+        """
+        description:
+                    Write configuration information for each layer
+        parameters:
+                    quant_list: Save the list of quantlayer and classifier
+        return code:
+                    None
+        """
+        layername = self.layermsg[0].split(":", 1)[1].split(" ", 1)[0].strip('\n')
+        if layername == "1":
+            path = "{}{}".format("debug/output/config", ".txt")
+        else:
+            path = "{}{}{}".format("debug/output/config_", str(int(layername) - 1), ".txt")
+
+        with open(path, 'w') as fw:
+            layer_type = " "
+            for i in range(len(self.layermsg)):
+                if "layer type:" in self.layermsg[i]:
+                    if self.layermsg[i].startswith("layer_num:1 ") is True:
+                        layer_type = self.layermsg[i].split(":", 3)[2]
+                    else:
+                        layer_type = self.layermsg[i].split(":", 5)[2].split(" ")[0]
+            if "conv" in layer_type:
+                self.write_conv_config(fw)
+            elif "pool" in layer_type:
+                self.write_pool_config(fw)
+            elif "fc" in layer_type:
+                self.write_fc_config(fw, quant_list)
+            else:
+                self.print("Unknown layer type...")
                 return
 
-    for i in range(num):
-        name = layerlist[flag+i][0]
-        data = layerlist[flag+i][1]
-        if "bn.running_mean" in name or "bn.running_var" in name \
-              or "bn.weight" in name or "bn.bias" in name \
-              or "num_batches_tracked" in name:
-            continue
-        elif "quant.alpha" in name:
-            deal_out_in_q(name, data, layer_msg)
-            continue
-        write_data = threading.Thread(target=write_pt_data, args=(name, data))
-        write_data.start()
-        write_data.join()
+        print("%s write config success" % path)
 
-def get_layercount(filename):
-    """
-    description:
-                Get the number of vggnet's layers
-    parameters:
-                filename: Relative path of tensor file
-    return code:
-                None
-    """
-    with open(filename, 'r') as file:
-        while True:
-            line = file.readline()
-            if line.strip() == "":
-                break 
-            elif ": BasicBlock(" in line or "Pool2d(" in line or "Linear" in line:
-                global layer_cnts
-                layer_cnts += 1
+    def deal_out_in_q(self, quant_list, data):
+        """
+        description:
+                    Handle out_q and in_q function
+        parameters:
+                    quant_list: Save the list of quantlayer and classifier
+                    data:       Data of each quantlayer or fclayer
+        return code:
+                    None
+        """
+        bits = 7
+        if "pool" in self.layermsg:
+            out_q = self.in_q
+        else:
+            out_q = bits - math.ceil(math.log2(0.5 * data))
 
-def get_tensorinfo(filename):
-    """
-    description:
-                Get tensor input information
-    parameters:
-                filename: Relative path of tensor file
-    return code:
-                None
-    """
-    with open(filename, 'r') as file:
-        while True:
-            line = file.readline()
-            if line.strip() == "":
+        self.layermsg.append("{}{}".format("in_q = ", self.in_q))
+        self.layermsg.append("{}{}".format("out_q = ", out_q))
+        self.in_q = out_q
+        write_config = threading.Thread(target=self.write_layer_config,
+                                        args=(quant_list, ))
+        write_config.start()
+        write_config.join()
+
+    def splicing_output(self, num, flag, quant_list):
+        """
+        description:
+                    Format splicing output
+        parameters:
+                    num:        Number of each layer
+                    flag:       Start mark of each layer (subscript)
+                    quant_list: Save the list of quantlayer and classifier
+        return code:
+                    None
+        """
+        for i in range(len(self.layers)):
+            if "quant.alpha" in self.layers[i][0]:
+                data = self.layers[i][1]
+                if num == 0:
+                    self.deal_out_in_q(quant_list, data)
+                    return
+
+        conv = scale = weight = ""
+        for i in range(num):
+            name = self.layers[flag + i][0]
+            data = self.layers[flag + i][1]
+            if "quant.alpha" in name:
+                self.deal_out_in_q(name, data)
                 continue
-            elif  "torch.rand" in line:
-                global in_feature_h
-                global in_feature_w
-                in_feature_h = line.split("(")[1].split(")")[0].split(",", 4)[2].strip()
-                in_feature_w = line.split("(")[1].split(")")[0].split(",", 4)[3].strip()
-                break
+            elif ".scale" in name or ".conv.weight" in name:
+                if ".scale" in name:
+                    scale = data
+                else:
+                    conv = name
+                    weight = data
+                if len(conv) and len(str(scale)) and len(str(weight)):
+                    write_data = threading.Thread(target=self.write_pt_data,
+                                                  args=(conv, weight, scale))
+                    write_data.start()
+                    write_data.join()
+                    continue
+            elif ".bn.bn_b" in name or ".bn.bn_k" in name:
+                write_data = threading.Thread(target=self.write_pt_data,
+                                              args=(name, data, scale))
+                write_data.start()
+                write_data.join()
+
+    def get_layercount(self, filename):
+        """
+        description:
+                    Get the number of vggnet's layers
+        parameters:
+                    filename: Relative path of tensor file
+        return code:
+                    None
+        """
+        with open(filename, 'r') as file:
+            while True:
+                line = file.readline()
+                if line.strip() == "":
+                    break
+                elif ": BasicBlock(" in line or "Pool2d(" in line or "Linear" in line:
+                    self.layer_cnts += 1
+
+    def get_tensorinfo(self, filename):
+        """
+        description:
+                    Get tensor input information
+        parameters:
+                    filename: Relative path of tensor file
+        return code:
+                    None
+        """
+        with open(filename, 'r') as file:
+            while True:
+                line = file.readline()
+                if line.strip() == "":
+                    continue
+                elif "torch.rand" in line:
+                    self.in_feature_h = line.split("(")[1].split(")")[0].split(",", 4)[2].strip()
+                    self.in_feature_w = line.split("(")[1].split(")")[0].split(",", 4)[3].strip()
+                    break
 
 def gen_fpga(filepath):
     os.chdir(filepath)
-    cmd_list = ["rm -rf config*txt cfg_*txt data_for_fpga/", 
-                "cp -af ../debug/output/config*txt .", 
+    cmd_list = ["rm -rf config*txt cfg_*txt *bn* *bias* *alpha* *weight* data_for_fpga/",
+                "cp -af ../debug/output/* .",
                 "python ../input/config_gen_file_v3_0.py -d ../imagenet_fixed_v4_1/ \
                        -n imagenet_fixed_v4_1_img6 -f",
                 "mv data_for_fpga ../output"]
@@ -816,106 +796,109 @@ def gen_fpga(filepath):
     for i in range(len(cmd_list)):
         os.system(cmd_list[i])
 
-def load_pt(pt_path):
+def gen_txt(loadpt):
     """
     description:
                 Load pt file and format output
     parameters:
-                pt_path: Relative path of pt file
+                loadpt: The Class of load_pt
     return code:
                 None
     """
-    name_list    = []
-    data_list    = []
-    quant_list   = []
+    counts = 0
+    name_list = []
+    data_list = []
+    quant_list = []
     onelayer_cnt = []
 
-    get_tensorinfo("debug/vggnet.py")
-    get_layercount("debug/layerinfo")
+    loadpt.get_tensorinfo("debug/vggnet.py")
+    loadpt.get_layercount("debug/layerinfo")
+
     with open(pt_path, 'rb') as f:
         buffer = io.BytesIO(f.read())
         dict = torch.load(buffer, map_location=torch.device('cpu'))
         for k, v in dict.items():
-           if "quant_" in k or "classifier." in k:
-               quant_list.append(k)
-               quant_list.append(v)
-           name_list.append(k)
-           data_list.append(v)
-           tensor = v
+            if "quant_" in k or "classifier." in k:
+                quant_list.append(k)
+                quant_list.append(v)
+            name_list.append(k)
+            data_list.append(v)
 
-    counts = 0
-    layers = [["", tensor]]
-
-    for i in range(layer_cnts):
+    for i in range(loadpt.layer_cnts):
         layer = "{}{}{}".format("layers.", i, ".")
         for j in range(len(name_list)):
             if layer in name_list[j]:
-                 layers.append([name_list[j], data_list[j]])
-                 counts += 1
+                loadpt.layers.append([name_list[j], data_list[j]])
+                counts += 1
         onelayer_cnt.append(str(counts))
         counts = 0
 
-    del(layers[0])
+    del (loadpt.layers[0])
     logpath = "{}{}".format(os.getcwd(), "/debug/vggnet.log")
-    for i in range(layer_cnts):
-        layername = "{}{}".format("layer_num:", str(i+1))
-        layer_msg = get_layer_info(logpath, layername)
-        splicing_output(int(onelayer_cnt[i]), counts, layers, layer_msg, quant_list)
+    for i in range(loadpt.layer_cnts):
+        layername = "{}{}".format("layer_num:", str(i + 1))
+        loadpt.layermsg = loadpt.get_layer_info(logpath, layername)
+        loadpt.splicing_output(int(onelayer_cnt[i]), counts, quant_list)
         counts += int(onelayer_cnt[i])
-        
-    for i in range(int(len(quant_list))):
+
+    scale = fcname = weight = ""
+    for i in range(len(quant_list)):
         tmpstr = str(quant_list[i])
-        if ".alpha" in tmpstr:
-            continue
-        if "quant_" in tmpstr or "classifier" in tmpstr:
-            write_data = threading.Thread(target=write_pt_data, 
-                         args=(quant_list[i], quant_list[i+1]))
+        if ".scale" in tmpstr or ".weight" in tmpstr:
+            if ".scale" in tmpstr:
+                scale = quant_list[i + 1]
+            else:
+                fcname = quant_list[i]
+                weight = quant_list[i + 1]
+            if len(fcname) and len(str(scale)) and len(str(weight)):
+                write_data = threading.Thread(target=loadpt.write_pt_data,
+                                              args=(fcname, weight, scale))
+                write_data.start()
+                write_data.join()
+                continue
+        elif "quant_" in tmpstr or "classifier" in tmpstr:
+            write_data = threading.Thread(target=loadpt.write_pt_data,
+                                          args=(quant_list[i], quant_list[i + 1], scale))
             write_data.start()
             write_data.join()
 
-def checkfile(filelist):
+
+def gen_net(mknet, filename):
     """
     description:
-                Check files in working directory
+                Generate model files
     parameters:
-                cleanlist: List of files to check
+                mknet:    The Class of makenet
+                filename: The network name that the compiler can resolve
     return code:
                 None
     """
-    for i in range(len(filelist)):
-        file = "input/"
-        if "imagenet_fixed_v4_1" in filelist[i]:
-            file = ""
-        name = "{}{}".format(file, filelist[i])
-        if not os.path.exists(name):
-            print("%s not found...\nPlease try again!" %name)
-            sys.exit(1)
-    
-    print("checkfile successfully")
+    mknet.make_config(filename)
+    mknet.make_block(filename)
+    mknet.make_class(filename)
+    mknet.make_layers(filename)
+    mknet.make_padding(filename)
+    mknet.make_forward(filename)
+    mknet.make_weight(filename)
+    mknet.make_main(filename)
+    mknet.fmakenet.close()
 
-def clean_ups(cleanlist):
-    """
-    description:
-                Clean up working directory
-    parameters:
-                cleanlist: List of files to be cleaned
-    return code:
-                None
-    """
-    for i in range(len(cleanlist)):
-        if not os.path.exists("debug"):
-            os.mkdir("debug")
-        output = "{}{}".format("debug/", cleanlist[i])
-        if "data_for_fpga" in cleanlist[i]:
-            output = "{}{}".format("output/", cleanlist[i])
-        if os.path.exists(output):
-            if os.path.isdir(output):
-                shutil.rmtree(output)
-            else:
-                os.remove(output)
-            print("%s clean success" %(output))
+    os.system("python3 debug/makenet.py > debug/layerinfo")
+    mknet.splicing_layers("debug/layerinfo")
+    mknet.bns[0] = mknet.get_op_code(filename, "bn")
+    mknet.get_op_code(filename, "avgpool")
+    mknet.get_op_code(filename, "weight")
+    mknet.get_op_code(filename, "quant")
+    mknet.get_op_code(filename, "fc")
 
-    print("clean_ups successfully")
+    mknet._make_head()
+    mknet._make_init()
+    mknet._make_padding(filename)
+    mknet._make_forward()
+    mknet._make_avgpool()
+    mknet._make_tail()
+    mknet.fvggnet.close()
+    print("make vggnet.py successfully")
         
 def output(cnt, total, msg):
     """
@@ -950,6 +933,50 @@ def schedule(i, start, end):
     print('Step %d Running time: %.7s s'%(i, end-start))
     print('******************************')
 
+def clean_ups(cleanlist):
+    """
+    description:
+                Clean up working directory
+    parameters:
+                cleanlist: List of files to be cleaned
+    return code:
+                None
+    """
+    for i in range(len(cleanlist)):
+        if not os.path.exists("debug"):
+            os.mkdir("debug")
+        output = "{}{}".format("debug/", cleanlist[i])
+        if "data_for_fpga" in cleanlist[i]:
+            output = "{}{}".format("output/", cleanlist[i])
+        if os.path.exists(output):
+            if os.path.isdir(output):
+                shutil.rmtree(output)
+            else:
+                os.remove(output)
+            print("%s clean success" % (output))
+
+    print("clean_ups successfully")
+
+def checkfile(filelist):
+    """
+    description:
+                Check files in working directory
+    parameters:
+                cleanlist: List of files to check
+    return code:
+                None
+    """
+    for i in range(len(filelist)):
+        file = "input/"
+        if "imagenet_fixed_v4_1" in filelist[i]:
+            file = ""
+        name = "{}{}".format(file, filelist[i])
+        if not os.path.exists(name):
+            print("%s not found...\nPlease try again!" % name)
+            sys.exit(1)
+
+    print("checkfile successfully")
+
 
 if __name__ == '__main__':
     """
@@ -983,7 +1010,8 @@ if __name__ == '__main__':
 
     start = time.time()
     output(3, 6, 'Make network model file...')
-    makenet("./input/vgg_imagenet.py")
+    mknet = makenet()
+    gen_net(mknet, "./input/vgg_imagenet.py")
     end = time.time()
     schedule(3, start, end)
 
@@ -997,7 +1025,8 @@ if __name__ == '__main__':
     start = time.time()
     os.system("mkdir -p debug/output output")
     output(5, 6, 'Load pt file and format output...')
-    load_pt(pt_path)
+    loadpt = load_pt()
+    gen_txt(loadpt)
     print("pt data and config file successfully")
     end = time.time()
     schedule(5, start, end)
