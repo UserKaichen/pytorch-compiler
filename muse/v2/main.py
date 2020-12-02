@@ -786,6 +786,14 @@ class load_pt():
                     break
 
 def gen_fpga(filepath):
+    """
+    description:
+                Generate the bin file needed by fpga
+    parameters:
+                filepath: The path of pt file
+    return code:
+                None
+    """
     os.chdir(filepath)
     cmd_list = ["rm -rf config*txt cfg_*txt *bn* *bias* *alpha* *weight* data_for_fpga/",
                 "cp -af ../debug/output/* .",
@@ -810,6 +818,11 @@ def gen_txt(loadpt):
     data_list = []
     quant_list = []
     onelayer_cnt = []
+
+    with open("debug/output/img.input.q.txt", 'w') as fw:
+        fw.write(loadpt.in_q)
+        fw.write("\n")
+        print("debug/output/img.input.q.txt write data success")
 
     loadpt.get_tensorinfo("debug/vggnet.py")
     loadpt.get_layercount("debug/layerinfo")
@@ -861,7 +874,6 @@ def gen_txt(loadpt):
                                           args=(quant_list[i], quant_list[i + 1], scale))
             write_data.start()
             write_data.join()
-
 
 def gen_net(mknet, filename):
     """
