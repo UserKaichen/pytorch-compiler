@@ -18,6 +18,8 @@ def gen_fpga(filepath):
     for i in range(len(cmd_list)):
         os.system(cmd_list[i])
 
+    print("run gen_fpga successfully")
+
 def gen_txt(loadpt):
     """
     description:
@@ -89,6 +91,8 @@ def gen_txt(loadpt):
             write_data.start()
             write_data.join()
 
+    print("run gen_txt successfully")
+
 def gen_net(mknet, filename):
     """
     description:
@@ -109,14 +113,15 @@ def gen_net(mknet, filename):
     mknet.make_main(filename)
     mknet.fmakenet.close()
 
+    print("make makenet.py successfully")
     os.system("python3 debug/makenet.py > debug/layerinfo")
+
     mknet.splicing_layers("debug/layerinfo")
     mknet.bns[0] = mknet.get_op_code(filename, "bn")
     mknet.get_op_code(filename, "avgpool")
     mknet.get_op_code(filename, "weight")
     mknet.get_op_code(filename, "quant")
     mknet.get_op_code(filename, "fc")
-
     mknet._make_head()
     mknet._make_init()
     mknet._make_padding(filename)
@@ -124,6 +129,7 @@ def gen_net(mknet, filename):
     mknet._make_avgpool()
     mknet._make_tail()
     mknet.fvggnet.close()
+
     print("make vggnet.py successfully")
         
 def output(cnt, total, msg):
@@ -188,7 +194,7 @@ def checkfile(filelist):
     description:
                 Check files in working directory
     parameters:
-                cleanlist: List of files to check
+                checklist: List of files to check
     return code:
                 None
     """
@@ -200,6 +206,8 @@ def checkfile(filelist):
         if not os.path.exists(name):
             print("%s not found...\nPlease try again!" % name)
             sys.exit(1)
+        else:
+            print("check %s success" % name)
 
     print("checkfile successfully")
 
@@ -253,14 +261,12 @@ if __name__ == '__main__':
     output(5, 6, 'Load pt file and format output...')
     loadpt = load_pt()
     gen_txt(loadpt)
-    print("pt data and config file successfully")
     end = time.time()
     schedule(5, start, end)
 
     start = time.time()
     output(6, 6, 'Make the bin file needed by fpga...')
     gen_fpga("imagenet")
-    print("generate fpga data successfully")
     end = time.time()
     schedule(6, start, end)
     allend = end
