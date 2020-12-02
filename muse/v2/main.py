@@ -26,6 +26,11 @@ class makenet():
         self.fvggnet = open("debug/vggnet.py", "a")
         self.fmakenet = open("debug/makenet.py", "a")
 
+    """
+    description: Add import code form vgg_imagenet.py to makenet.py
+    parameter: filename —— vgg_imagenet.py
+    return value: NULL
+    """
     def make_config(self, filename):
         with open(filename, 'r') as file:
             while True:
@@ -40,6 +45,11 @@ class makenet():
                     break
         self.fmakenet.write('\n')
 
+    """
+    description: Add "class BasicBlock" code form vgg_imagenet.py to makenet.py
+    parameter: filename —— vgg_imagenet.py
+    return value: NULL
+    """
     def make_block(self, filename):
         read_flag = 0
         with open(filename, 'r') as file:
@@ -54,6 +64,11 @@ class makenet():
                         break
                     self.fmakenet.write(line)
 
+    """
+    description: Add "class vgg" code form vgg_imagenet.py to makenet.py
+    parameter: filename —— vgg_imagenet.py
+    return value: NULL
+    """
     def make_class(self, filename):
         read_flag = 0
         with open(filename, 'r') as file:
@@ -67,6 +82,11 @@ class makenet():
                         break
                     self.fmakenet.write(line)
 
+    """
+    description: Add "def make_layers" code form vgg_imagenet.py to makenet.py
+    parameter: filename —— vgg_imagenet.py
+    return value: NULL
+    """
     def make_layers(self, filename):
         read_flag = 0
         with open(filename, 'r') as file:
@@ -80,6 +100,11 @@ class makenet():
                         break
                     self.fmakenet.write(line)
 
+    """
+    description: Add "def padding" code form vgg_imagenet.py to makenet.py
+    parameter: filename —— vgg_imagenet.py
+    return value: NULL
+    """
     def make_padding(self, filename):
         read_flag = 0
         with open(filename, 'r') as file:
@@ -93,6 +118,11 @@ class makenet():
                         break
                     self.fmakenet.write(line)
 
+    """
+    description: Add "def forward" code form vgg_imagenet.py to makenet.py
+    parameter: filename —— vgg_imagenet.py
+    return value: NULL
+    """
     def make_forward(self, filename):
         read_flag = 0
         with open(filename, 'r') as file:
@@ -110,6 +140,11 @@ class makenet():
                         break
                     self.fmakenet.write(line)
 
+    """
+    description: Add "def _initialize_weights" code form vgg_imagenet.py to makenet.py
+    parameter: filename —— vgg_imagenet.py
+    return value: NULL
+    """
     def make_weight(self, filename):
         read_flag = 0
         with open(filename, 'r') as file:
@@ -123,6 +158,11 @@ class makenet():
                         break
                     self.fmakenet.write(line)
 
+    """
+    description: Add "main" code for form vgg_imagenet.py to makenet.py
+    parameter: filename —— vgg_imagenet.py
+    return value: NULL
+    """
     def make_main(self, filename):
         read_flag = 0
         with open(filename, 'r') as file:
@@ -137,6 +177,11 @@ class makenet():
                     self.fmakenet.write(outvgg)
                     return
 
+    """
+    description: Add import code to vggnet.py
+    parameter: NULL
+    return value: NULL
+    """
     def _make_head(self):
         self.fvggnet.write("import sys\n")
         self.fvggnet.write("import torch\n")
@@ -148,12 +193,22 @@ class makenet():
         self.fvggnet.write("    def __init__(self, num_classes=10):\n")
         self.fvggnet.write("        super(Net, self).__init__()\n")
 
+    """
+    description: Add main code to vggnet.py
+    parameter: NULL
+    return value: NULL
+    """
     def _make_tail(self):
         self.fvggnet.write("\nn = Net()\n")
         self.fvggnet.write("example_input = torch.rand(1, 3, 224, 224)\n")
         self.fvggnet.write("module = torch.jit.trace(n, example_input)\n")
         self.fvggnet.write("module._c._fun_compile()\n")
 
+    """
+    description: Add "self.*" code to vggnet.py
+    parameter: NULL
+    return value: NULL
+    """
     def _make_init(self):
         for i in range(len(self.layer)):
             if "Conv2d" in str(self.layer[i]):
@@ -183,6 +238,11 @@ class makenet():
         for i in range(len(self.fcinit)):
             self.fvggnet.write("{}{}{}".format("        ", self.fcinit[i], "\n"))
 
+    """
+    description: Add "def padding" code from vgg_imagenet.py to vggnet.py
+    parameter: filename —— vgg_imagenet.py
+    return value: NULL
+    """
     def _make_padding(self, filename):
         read_flag = 0
         self.fvggnet.write("\n")
@@ -198,6 +258,11 @@ class makenet():
                         break
                     self.fvggnet.write(line)
 
+    """
+    description: Add "x = F.relu(self.bn*(self.conv*(x))) or x = F.relu(self.conv*(x))" code to vggnet.py
+    parameter: convcnt —— The number of layers
+    return value: NULL
+    """
     def _make_convlay(self, convcnt):
         x = "F.relu"
         end = "))\n"
@@ -209,6 +274,11 @@ class makenet():
                                           "(self.conv",str(convcnt), "(x", end)
         self.fvggnet.write(convcmd)
 
+    """
+    description: Add "x = self.pool*(x)" code to vggnet.py
+    parameter: NULL
+    return value: NULL
+    """
     def _make_forward(self):
         convcnt = poolcnt = 0
         self.fvggnet.write("    def forward(self, x):\n")
@@ -228,6 +298,11 @@ class makenet():
                 poolcmd = "{}{}{}".format("        x = self.pool", str(poolcnt), "(x)\n")
                 self.fvggnet.write(poolcmd)
 
+    """
+    description: Add "x = self.avgpool_*(x)" code to vggnet.py
+    parameter: NULL
+    return value: NULL
+    """
     def _make_avgpool(self):
         self.fvggnet.write("{}{}".format("        x = self.padding(x)", "\n"))
         for i in range(len(self.avgford)):
@@ -238,6 +313,11 @@ class makenet():
 
         self.fvggnet.write("        return x\n")
 
+    """
+    description: Get data from layerinfo
+    parameter: file —— layerinfo
+    return value: NULL
+    """
     def splicing_layers(self, file):
         with open(file, "r") as f:
             lines = f.readline()
@@ -245,6 +325,11 @@ class makenet():
                 lines = f.readline()
                 self.layer.append(lines)
 
+    """
+    description: Get op code from vgg_imagenet.py
+    parameter: code_path —— vgg_imagenet.py    operator —— op
+    return value: NULL
+    """
     def get_op_code(self, code_path, operator):
         with open(code_path, encoding='utf-8') as f:
             lines = f.readline()
@@ -786,14 +871,6 @@ class load_pt():
                     break
 
 def gen_fpga(filepath):
-    """
-    description:
-                Generate the bin file needed by fpga
-    parameters:
-                filepath: The path of pt file
-    return code:
-                None
-    """
     os.chdir(filepath)
     cmd_list = ["rm -rf config*txt cfg_*txt *bn* *bias* *alpha* *weight* data_for_fpga/",
                 "cp -af ../debug/output/* .",
@@ -818,11 +895,6 @@ def gen_txt(loadpt):
     data_list = []
     quant_list = []
     onelayer_cnt = []
-
-    with open("debug/output/img.input.q.txt", 'w') as fw:
-        fw.write(loadpt.in_q)
-        fw.write("\n")
-        print("debug/output/img.input.q.txt write data success")
 
     loadpt.get_tensorinfo("debug/vggnet.py")
     loadpt.get_layercount("debug/layerinfo")
@@ -874,6 +946,7 @@ def gen_txt(loadpt):
                                           args=(quant_list[i], quant_list[i + 1], scale))
             write_data.start()
             write_data.join()
+
 
 def gen_net(mknet, filename):
     """
