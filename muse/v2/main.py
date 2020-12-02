@@ -194,8 +194,6 @@ def checkfile(filelist):
     """
     for i in range(len(filelist)):
         file = "input/"
-        print("debug:", filelist[i], file)
-        #if "imagenet" in filelist[i]:
         if "imagenet" == filelist[i]:
             file = ""
         name = "{}{}".format(file, filelist[i])
