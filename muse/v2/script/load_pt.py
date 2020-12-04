@@ -1,4 +1,5 @@
 import io
+import os
 import math
 import torch
 import threading
@@ -34,7 +35,7 @@ class load_pt():
         if int(str(find_flg).split(":", 1)[1]) == 0:
             print("please do not send layer_num:0")
             exit(0)
-        next_flg = "{}{}".format("layer_num:", int(str(find_flg).split(":", 1)[1]) + 1)
+        next_flg = f'layer_num:{int(str(find_flg).split(":", 1)[1]) + 1}'
         with open(path, 'r') as file_read:
             for line in file_read:
                 if flag in line:
@@ -76,7 +77,7 @@ class load_pt():
         return code:
                     None
         """
-        path = "{}{}{}".format("debug/output/", filename, ".txt")
+        path = f'debug/output/{filename}.txt'
         with open(path, 'w') as fw:
             if "quant_" in filename:
                 fw.write(str(filedata))
@@ -89,7 +90,7 @@ class load_pt():
                     conver = self.getoneDimList(conver)
                 for i in range(len(conver)):
                     if "bn.bn" in filename or ".bias" in filename:
-                        hexdata = "{:X}".format(st.unpack('H', st.pack('e', conver[i]))[0])
+                        hexdata = '%X' % st.unpack('H', st.pack('e', conver[i]))[0]
                         fw.write(str(hexdata))
                     elif "weight" in filename:
                         scalelist = scale.tolist()
@@ -166,22 +167,22 @@ class load_pt():
 
         for i in range(len(param)):
             if "in_channels" in param[i] or "in_features_y" in param[i]:
-                in_channels = "{}{}".format("input channel num  = ", param[i].split(":")[1].strip())
+                in_channels = f'input channel num  = {param[i].split(":")[1].strip()}'
                 if in_channels.strip() == self.out_channels_bf or len(self.out_channels_bf) == 0:
                     config.append(in_channels)
                 else:
-                    config.append("{}{}".format("input channel num  = ", self.out_channels_bf.split("=")[1].strip()))
+                    config.append(f'input channel num  = {self.out_channels_bf.split("=")[1].strip()}')
             elif "out_channels" in param[i] or "out_features_y" in param[i]:
-                out_channels = "{}{}".format("output channel num = ", param[i].split(":")[1].strip())
+                out_channels = f'output channel num = {param[i].split(":")[1].strip()}'
                 config.append(out_channels)
             elif "feature_map_size_x" in param[i]:
                 out_feature_h = param[i].split(":")[1].strip()
             elif "feature_map_size_y" in param[i]:
                 out_feature_w = param[i].split(":")[1].strip()
             elif "stride_x" in param[i]:
-                stride_x = "{}{}".format("stride_x = ", param[i].split(":")[1].strip())
+                stride_x = f'stride_x = {param[i].split(":")[1].strip()}'
             elif "stride_y" in param[i]:
-                stride_y = "{}{}".format("stride_y = ", param[i].split(":")[1].strip())
+                stride_x = f'stride_y = {param[i].split(":")[1].strip()}'
             elif "kernel_size_x" in param[i]:
                 kernel_size_x = param[i].split(":")[1].strip()
             elif "kernel_size_y" in param[i]:
@@ -216,15 +217,15 @@ class load_pt():
             ratio = int(kernel_size_x)
             out_feature_h = str(int(int(float(self.in_feature_h)) / ratio))
             out_feature_w = str(int(int(float(self.in_feature_w)) / ratio))
-        config.append("{}{}".format("input feature_h = ", self.in_feature_h))
-        config.append("{}{}".format("input feature_w = ", self.in_feature_w))
+        config.append(f'input feature_h = {self.in_feature_h}')
+        config.append(f'input feature_w = {self.in_feature_w}')
         if layer_type != "pool":
             if (layer_type == "fc"):
                 if self.in_feature_h == "1" and self.in_feature_w == "1":
                     kernel_size_x = out_feature_h = self.in_feature_h
                     kernel_size_y = out_feature_w = self.in_feature_w
-        config.append("{}{}".format("output feature_h = ", out_feature_h))
-        config.append("{}{}".format("output feature_w = ", out_feature_w))
+        config.append(f'output feature_h = {out_feature_h}')
+        config.append(f'output feature_w = {out_feature_w}')
         config.append("\n")
         if layer_type == "conv":
             config.append("padding = 1")
@@ -232,7 +233,7 @@ class load_pt():
             config.append("padding = 0")
         config.append(in_q)
         config.append(out_q)
-        config.append("{}{}{}{}".format("kernel size = ", kernel_size_x, "×", kernel_size_y))
+        config.append(f'kernel size = {kernel_size_x}×{kernel_size_y}')
         if "relu " in relu:
             config.append(relu)
         else:
@@ -281,12 +282,12 @@ class load_pt():
             self.write_common_params(config, param, in_q, out_q, relu, "conv")
 
         config.append(
-            "{}{}{}".format("act0 file               : layers.", str(int(layer_num) - 1), ".conv.input.6.txt"))
+            f'act0 file               : layers.{str(int(layer_num) - 1)}.conv.input.6.txt')
         config.append(
-            "{}{}{}".format("output file             : layers.", str(int(layer_num) - 1), ".quant.output.6.txt"))
-        config.append("{}{}{}".format("weight file             : layers.", str(int(layer_num) - 1), ".conv.weight.txt"))
-        config.append("{}{}{}".format("bn k file               : layers.", str(int(layer_num) - 1), ".bn.bn_k.txt"))
-        config.append("{}{}{}".format("bn b file               : layers.", str(int(layer_num) - 1), ".bn.bn_b.txt"))
+            f'output file             : layers.{str(int(layer_num) - 1)}.quant.output.6.txt')
+        config.append(f'weight file             : layers.{str(int(layer_num) - 1)}.conv.weight.txt')
+        config.append(f'bn k file               : layers.{str(int(layer_num) - 1)}.bn.bn_k.txt')
+        config.append(f'bn b file               : layers.{str(int(layer_num) - 1)}.bn.bn_b.txt')
 
         self.write_to_file(fw, config)
         self.out_to_in(out_feature_h, out_feature_w, in_channels, out_channels, "conv")
@@ -356,13 +357,13 @@ class load_pt():
         for i in range(len(quant_list)):
             if (i % 2) == 0:
                 if "classifier" in quant_list[i] and "weight" in quant_list[i]:
-                    classifier.append("{}{}{}".format(quant_list[i].rsplit(".")[0], ".", quant_list[i].rsplit(".")[1]))
+                    classifier.append(f'{quant_list[i].rsplit(".")[0]}.{quant_list[i].rsplit(".")[1]}')
 
-        config.append("{}{}{}".format("act0 file               : ", classifier[int(fc_name[2]) - 1], ".input.6.txt"))
-        config.append("{}{}{}{}".format("output file             : ", "quant_", fc_name, ".output.6.txt"))
-        config.append("{}{}{}".format("weight file             : ", classifier[int(fc_name[2]) - 1], ".weight.txt"))
-        config.append("{}{}{}".format("bn k file               : ", classifier[int(fc_name[2]) - 1], ".k.txt"))
-        config.append("{}{}{}".format("bn b file               : ", classifier[int(fc_name[2]) - 1], ".bias.txt"))
+        config.append(f'act0 file               : {classifier[int(fc_name[2]) - 1]}.input.6.txt')
+        config.append(f'output file             : quant_{fc_name}.output.6.txt')
+        config.append(f'weight file             : {classifier[int(fc_name[2]) - 1]}.weight.txt')
+        config.append(f'bn k file               : {classifier[int(fc_name[2]) - 1]}.k.txt')
+        config.append(f'bn b file               : {classifier[int(fc_name[2]) - 1]}.bias.txt')
 
         self.write_to_file(fw, config)
         self.out_to_in(out_feature_h, out_feature_w, in_channels, out_channels, "fc")
@@ -377,10 +378,10 @@ class load_pt():
                     None
         """
         layername = self.layermsg[0].split(":", 1)[1].split(" ", 1)[0].strip('\n')
-        if layername == "1":
-            path = "{}{}".format("debug/output/config", ".txt")
-        else:
-            path = "{}{}{}".format("debug/output/config_", str(int(layername) - 1), ".txt")
+        padding = ""
+        if layername != "1":
+            padding = f'_{str(int(layername) - 1)}'
+        path = f'debug/output/config{padding}.txt'
 
         with open(path, 'w') as fw:
             layer_type = " "
@@ -418,8 +419,8 @@ class load_pt():
         else:
             out_q = bits - math.ceil(math.log2(0.5 * data))
 
-        self.layermsg.append("{}{}".format("in_q = ", self.in_q))
-        self.layermsg.append("{}{}".format("out_q = ", out_q))
+        self.layermsg.append(f'in_q = {self.in_q}')
+        self.layermsg.append(f'out_q = {out_q}')
         self.in_q = out_q
         write_config = threading.Thread(target=self.write_layer_config,
                                         args=(quant_list, ))
@@ -534,7 +535,7 @@ def gen_txt(loadpt):
             data_list.append(v)
 
     for i in range(loadpt.layer_cnts):
-        layer = "{}{}{}".format("layers.", i, ".")
+        layer = f'layers.{i}.'
         for j in range(len(name_list)):
             if layer in name_list[j]:
                 loadpt.layers.append([name_list[j], data_list[j]])
@@ -543,9 +544,9 @@ def gen_txt(loadpt):
         counts = 0
 
     del (loadpt.layers[0])
-    logpath = "{}{}".format(os.getcwd(), "/debug/vggnet.log")
+    logpath = f'{os.getcwd()}/debug/vggnet.log'
     for i in range(loadpt.layer_cnts):
-        layername = "{}{}".format("layer_num:", str(i + 1))
+        layername = f'layer_num:{str(i + 1)}'
         loadpt.layermsg = loadpt.get_layer_info(logpath, layername)
         loadpt.splicing_output(int(onelayer_cnt[i]), counts, quant_list)
         counts += int(onelayer_cnt[i])
@@ -581,6 +582,8 @@ if __name__ == '__main__':
     return code: 
                 None
     """
-    pt_path = "../input/vgg_imagenet2.pt"
+    os.chdir("..")
+    pt_path = "input/vgg_imagenet.pt"
     loadpt = load_pt()
     gen_txt(loadpt)
+    os.chdir("script")

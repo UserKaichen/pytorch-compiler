@@ -5,6 +5,7 @@ Custom vgg for MUSEv2 design
 import math
 import torch
 import torch.nn as nn
+
 from quant_layer import QuantLayer
 
 
@@ -116,8 +117,4 @@ class vgg(nn.Module):
             elif isinstance(m, nn.Linear):
                 m.weight.data.normal_(0, 0.01)
                 m.bias.data.zero_()
-m = vgg(depth=16, init_weights=True, cfg=None)
-for name, W in m.named_parameters():
-    print(name, W.size())
-print(m)
-print(m(torch.rand(1,3,224,224)))
+m = vgg()

@@ -209,23 +209,23 @@ class makenet():
                 self.pools.append(self.layer[i])
 
         for i in range(len(self.pools)):
-            self.fvggnet.write("{}{}{}{}{}".format("        self.pool", i+1, " = nn.",
-                                             self.pools[i].split(":")[1].strip(), "\n"))
+            self.fvggnet.write(
+                f'        self.pool{str(i+1)} = nn.{self.pools[i].split(":")[1].strip()}\n')
         for j in range(len(self.convs)):
-            self.fvggnet.write("{}{}{}{}{}".format("        self.conv", j+1, " = nn.",
-                                             self.convs[j].split(":")[1].strip(), "\n"))
+            self.fvggnet.write(
+                f'        self.conv{str(j+1)} = nn.{self.convs[j].split(":")[1].strip()}\n')
             if self.bns[0] == "True":
-                self.fvggnet.write("{}{}{}{}{}".format("        self.bn", j+1, " = nn.",
-                                                 self.bns[j+1].split(":")[1].strip(), "\n"))
+                self.fvggnet.write(
+                    f'        self.bn{str(j+1)} = nn.{self.bns[j+1].split(":")[1].strip()}\n')
         self.fvggnet.write("\n")
 
         for i in range(len(self.avginit)):
-            self.fvggnet.write("{}{}{}".format("        ", self.avginit[i], "\n"))
+            self.fvggnet.write(f'        {self.avginit[i]}\n')
         for i in range(len(self.qulist)):
             if "= QuantLayer()" in self.qulist[i]:
-                self.fvggnet.write("{}{}{}".format("        ", self.qulist[i], "\n"))
+                self.fvggnet.write(f'        {self.qulist[i]}\n')
         for i in range(len(self.fcinit)):
-            self.fvggnet.write("{}{}{}".format("        ", self.fcinit[i], "\n"))
+            self.fvggnet.write(f'        {self.fcinit[i]}\n')
 
     """
     description: Add "def padding" code from vgg_imagenet.py to vggnet.py
@@ -259,8 +259,7 @@ class makenet():
         if self.bns[0] == "True":
             x = "F.relu(self.bn"
             end = ")))\n"
-        convcmd = "{}{}{}{}{}{}{}".format("        x = ", x, str(convcnt),
-                                          "(self.conv",str(convcnt), "(x", end)
+        convcmd = f'        x = {x}{str(convcnt)}(self.conv{str(convcnt)}(x{end}'
         self.fvggnet.write(convcmd)
 
     """
@@ -284,7 +283,7 @@ class makenet():
                         self._make_convlay(convcnt)
             elif "MaxPool2d" in str(self.layer[i]):
                 poolcnt += 1
-                poolcmd = "{}{}{}".format("        x = self.pool", str(poolcnt), "(x)\n")
+                poolcmd = f'        x = self.pool{str(poolcnt)}(x)\n'
                 self.fvggnet.write(poolcmd)
 
     """
@@ -293,12 +292,12 @@ class makenet():
     return value: NULL
     """
     def _make_avgpool(self):
-        self.fvggnet.write("{}{}".format("        x = self.padding(x)", "\n"))
+        self.fvggnet.write(f'        x = self.padding(x)\n')
         for i in range(len(self.avgford)):
-            self.fvggnet.write("{}{}{}".format("        ", self.avgford[i], "\n"))
-            self.fvggnet.write("{}{}{}".format("        ", self.qulist[i+int(len(self.qulist)/2)], "\n"))
+            self.fvggnet.write(f'        {self.avgford[i]}\n')
+            self.fvggnet.write(f'        {self.qulist[i+int(len(self.qulist)/2)]}\n')
         for i in range(len(self.fcford)):
-            self.fvggnet.write("{}{}{}".format("        ", self.fcford[i], "\n"))
+            self.fvggnet.write(f'        {self.fcford[i]}\n')
 
         self.fvggnet.write("        return x\n")
 
@@ -404,5 +403,7 @@ if __name__ == '__main__':
     return code: 
                 None
     """
+    os.chdir("..")
     mknet = makenet()
     gen_net(mknet, "./input/vgg_imagenet.py")
+    os.chdir("script")

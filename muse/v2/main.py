@@ -9,16 +9,103 @@ from script.load_pt import load_pt
 from script.makenet import makenet
 
 def gen_fpga(filepath):
+    """
+    description:
+                Generate bin files for fpga
+    parameters:
+                filepath: Run config_gen_file.py directory
+    return code:
+                None
+    """
     os.chdir(filepath)
-    cmd_list = ["rm -rf config*txt cfg_*txt *bn* *bias* *alpha* *weight* data_for_fpga/",
-                "cp -af ../debug/output/* .",
-                "python ../input/config_gen_file_v3_0.py -d ../imagenet/ -n imagenet_img6 -f",
-                "mv data_for_fpga ../output"]
+    cmd_list = [ "rm -rf con*txt cfg*txt *bn* *bias* *alpha* *weight* *input* *output* \
+                  *k* data_for_fpga",
+                 "cp -af ../debug/output/* .",
+                 "cp -af ../debug/genbmp/* ../imagenet/",
+                 "cp -af ~/.muse-v2/classifier.*k* ../imagenet/",
+                 "python ../input/config_gen_file.py -d ../imagenet/ -n imagenet_img6 -f",
+                 "mv data_for_fpga ../output" ]
 
     for i in range(len(cmd_list)):
         os.system(cmd_list[i])
 
+    os.chdir("..")
     print("run gen_fpga successfully")
+
+def write_fck_data(fw, data, cnt):
+    """
+    description:
+                write data to classifier.k file
+    parameters:
+                fw:
+                data:
+                cnt:
+    return code:
+                None
+    """
+    for i in range(cnt):
+        fw.write(data)
+
+def deal_fc_k(genbmp, vgglog):
+    """
+    description:
+                Generate model files
+    parameters:
+                genbmp: Path to generate bmp
+                vgglog: Path to vgglog file
+    return code:
+                None
+    """
+    fc_k_list  = []
+    fc_channel = []
+    data_list  = []
+
+    with open(vgglog, 'r') as file:
+        line = file.readline()
+        while line:
+            line = file.readline()
+            if line.startswith("fc") and "out_features_y" in line:
+                fc_channel.append(line.split(' ', 5)[4].split(':')[1].strip())
+
+    list = os.listdir(genbmp)
+    for i in range(len(list)):
+        if ".k.txt" in list[i]:
+            fc_k_list.append(list[i])
+
+    for i in range(len(fc_k_list)):
+        with open(f'{genbmp}/{fc_k_list[i]}', 'r') as fd:
+            line = fd.readline()
+            data_list.append(line)
+            
+    for i in range(len(fc_k_list)):
+        with open(f'{genbmp}/{fc_k_list[i]}', 'w') as fw:
+            write_fc_k = threading.Thread(target=write_fck_data,
+                                          args=(fw, data_list[i], int(fc_channel[i])))
+            write_fc_k.start()
+            write_fc_k.join()
+        print("write %s to %s file %s times success..." 
+              %(data_list[i].strip(), fc_k_list[i], fc_channel[i]))
+    
+def gen_bmp(genbmp, vgglog):
+    """
+    description:
+                Generate model files
+    parameters:
+                genbmp: Path to generate bmp
+                vgglog: Path to vgglog file
+    return code:
+                None
+    """
+    os.chdir("input")
+    cmd_list = [ f'python3 inout_print.py im6.bmp ../{genbmp}',
+                 "ls ../debug/genbmp/quant_fc3.output.int.6.txt" ]
+
+    for i in range(len(cmd_list)):
+        os.system(cmd_list[i])
+
+    os.chdir("..")
+    deal_fc_k(genbmp, vgglog)
+    print("run gen_bmp successfully")
 
 def gen_txt(loadpt):
     """
@@ -54,7 +141,7 @@ def gen_txt(loadpt):
             data_list.append(v)
 
     for i in range(loadpt.layer_cnts):
-        layer = "{}{}{}".format("layers.", i, ".")
+        layer = f'layers.{i}.'
         for j in range(len(name_list)):
             if layer in name_list[j]:
                 loadpt.layers.append([name_list[j], data_list[j]])
@@ -63,14 +150,16 @@ def gen_txt(loadpt):
         counts = 0
 
     del (loadpt.layers[0])
-    logpath = "{}{}".format(os.getcwd(), "/debug/vggnet.log")
+    logpath = f'{os.getcwd()}/debug/vggnet.log'
     for i in range(loadpt.layer_cnts):
-        layername = "{}{}".format("layer_num:", str(i + 1))
+        layername = f'layer_num:{str(i + 1)}'
         loadpt.layermsg = loadpt.get_layer_info(logpath, layername)
         loadpt.splicing_output(int(onelayer_cnt[i]), counts, quant_list)
         counts += int(onelayer_cnt[i])
 
-    scale = fcname = weight = ""
+    scale = ""
+    fcname = ""
+    weight = ""
     for i in range(len(quant_list)):
         tmpstr = str(quant_list[i])
         if ".scale" in tmpstr or ".weight" in tmpstr:
@@ -144,8 +233,10 @@ def output(cnt, total, msg):
                 None
     """
     filling = []
+
     for i in range(len(os.getcwd()) + 30):
         filling.append("=")
+
     print(''.join(filling))
     print('[Step %d/%d] %s' %(cnt, total, msg))
     print(''.join(filling))
@@ -177,9 +268,9 @@ def clean_ups(cleanlist):
     for i in range(len(cleanlist)):
         if not os.path.exists("debug"):
             os.mkdir("debug")
-        output = "{}{}".format("debug/", cleanlist[i])
+        output = f'debug/{cleanlist[i]}'
         if "data_for_fpga" in cleanlist[i]:
-            output = "{}{}".format("output/", cleanlist[i])
+            output = f'output/{cleanlist[i]}'
         if os.path.exists(output):
             if os.path.isdir(output):
                 shutil.rmtree(output)
@@ -202,7 +293,7 @@ def checkfile(filelist):
         file = "input/"
         if "imagenet" == filelist[i]:
             file = ""
-        name = "{}{}".format(file, filelist[i])
+        name = f'{file}{filelist[i]}'
         if not os.path.exists(name):
             print("%s not found...\nPlease try again!" % name)
             sys.exit(1)
@@ -221,36 +312,38 @@ if __name__ == '__main__':
     return code: 
                 None
     """
-    fileslist = ["imagenet", "vgg_imagenet.py", "vgg_imagenet2.pt", "quant_layer.py"]
-    cleanlist = ["makenet.py", "vggnet.py", "vggnet.log", "layerinfo", "output", "data_for_fpga"]
+    fileslist = ["config_gen_file.py", "vgg_imagenet.pt", "vgg_imagenet.py", "inout_print.py",
+                 "quant_layer.py",     "quantop.py",      "im6.bmp"]
+    cleanlist = ["data_for_fpga",      "makenet.py",      "vggnet.log",      "layerinfo",
+                 "vggnet.py",          "output",          "genbmp"]
 
     if (len(sys.argv) != 2) or not os.path.exists(sys.argv[1]):
-        pt_path = "input/vgg_imagenet2.pt"
+        pt_path = "input/vgg_imagenet.pt"
     else:
         pt_path = sys.argv[1]
 
     start = time.time()
     allstart = start
-    output(1, 6, "Check the necessary files...")
+    output(1, 7, "Check the necessary files...")
     checkfile(fileslist)
     end = time.time()
     schedule(1, start, end)
 
     start = time.time()
-    output(2, 6, 'Clean the necessary files...')
+    output(2, 7, 'Clean the necessary files...')
     clean_ups(cleanlist)
     end = time.time()
     schedule(2, start, end)
 
     start = time.time()
-    output(3, 6, 'Make network model file...')
+    output(3, 7, 'Make network model file...')
     mknet = makenet()
     gen_net(mknet, "./input/vgg_imagenet.py")
     end = time.time()
     schedule(3, start, end)
 
     start = time.time()
-    output(4, 6, 'Run the network model file...')
+    output(4, 7, 'Run the network model file...')
     os.system("python3 debug/vggnet.py > debug/vggnet.log")
     print("run vggnet.py successfully")
     end = time.time()
@@ -258,17 +351,24 @@ if __name__ == '__main__':
 
     start = time.time()
     os.system("mkdir -p debug/output output")
-    output(5, 6, 'Load pt file and format output...')
+    output(5, 7, 'Load pt file and format output...')
     loadpt = load_pt()
     gen_txt(loadpt)
     end = time.time()
     schedule(5, start, end)
 
     start = time.time()
-    output(6, 6, 'Make the bin file needed by fpga...')
-    gen_fpga("imagenet")
+    os.system("mkdir -p debug/genbmp")
+    output(6, 7, 'Generate input and output from bmp...')
+    gen_bmp("debug/genbmp", "debug/vggnet.log")
     end = time.time()
     schedule(6, start, end)
+
+    start = time.time()
+    output(7, 7, 'Make the bin file needed by fpga...')
+    gen_fpga("imagenet")
+    end = time.time()
+    schedule(7, start, end)
     allend = end
 
     print('Make data successfully! It costs %.2f Seconds'%(allend - allstart))
