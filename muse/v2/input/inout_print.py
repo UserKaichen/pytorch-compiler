@@ -10,16 +10,15 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 
 from save_data import save_data as _save_data
+from quantop import activation_quantization
 from quant_layer import QuantLayer
 from vgg_imagenet import vgg
-from quantop import activation_quantization
 
 
 def get_data(model, output_dir='out'):
     def quant_forward(forward, m, bits):
         @functools.wraps(forward)
         def wrapper(input):
-            # out = forward(input)
             out = input
             q = bits - m.exp
             return activation_quantization(out, bits=bits, q=q)[0]
@@ -70,7 +69,6 @@ def get_data(model, output_dir='out'):
 
     for m in model.modules():
         if isinstance(m, QuantLayer):
-            print('forward test quant')
             m.forward = quant_forward(m.forward, m, bits=7)
 
     save_data = functools.partial(_save_data, output_dir=output_dir)
