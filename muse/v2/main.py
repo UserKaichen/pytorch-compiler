@@ -39,16 +39,17 @@ def gen_fpga(filepath):
                 None
     """
     os.chdir(filepath)
-
     cmd_list = [ "rm -rf con*txt cfg*txt *bn* *bias* *alpha* *weight* *input* *output* \
                   *k* data_for_fpga",
-                 f'cp -af ../{confpath}/* ../imagenet/',
-                 f'cp -af ../{ptdtpath}/* ../imagenet/',
-                 f'cp -af ../{bmpdtpath}/* ../imagenet/',
+                 f'cp -af {confpath}/* {ptdtpath}/* {bmpdtpath}/* imagenet/',
                  "python ../input/config_gen_file.py -d ../imagenet/ -n imagenet_img6 -f",
-                 f'mv data_for_fpga ../{outputpath}' ]
+                 f'mv data_for_fpga {outputpath}' ]
 
     for i in range(len(cmd_list)):
+        if "cp -af" in cmd_list[i]:
+            os.chdir("..")
+        elif "python" in cmd_list[i]:
+            os.chdir(filepath)	
         os.system(cmd_list[i])
  
     os.chdir("..")
@@ -118,8 +119,8 @@ def gen_bmp(vgglog):
                 None
     """
     os.chdir("input")
-    cmd_list = [ f'python3 inout_print.py im6.bmp ../{bmpdtpath}',
-                 f'ls ../{bmpdtpath}/quant_fc3.output.int.6.txt' ]
+    cmd_list = [ f'python3 inout_print.py im6.bmp {bmpdtpath}',
+                 f'ls {bmpdtpath}/quant_fc3.output.int.6.txt' ]
 
     for i in range(len(cmd_list)):
         os.system(cmd_list[i])
@@ -337,7 +338,7 @@ if __name__ == '__main__':
                  "im6.bmp",              ptpath,           netpath]
     cleanlist = ["data_for_fpga",      "vggnet.log",      "vggnet.py",       "debug", 
                   confpath,             ptdtpath,          outputpath]
-
+    
     run_step = [["Check the necessary files...",
                  "checkfile(fileslist)"],
                 ["Clean the necessary files...",
