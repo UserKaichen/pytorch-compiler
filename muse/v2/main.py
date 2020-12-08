@@ -360,13 +360,13 @@ if __name__ == '__main__':
 
     for i in range(len(run_step)):
         start = time.time()
-        prints(i, len(run_step), run_step[i][0])
+        prints(i+1, len(run_step), run_step[i][0])
         for j in range(1, len(run_step[i])):
             s = run_step[i][j]
             r = compile(s, "<string>", "exec")
             exec(r)
         end = time.time()
-        schedule(i, start, end)
+        schedule(i+1, start, end)
 
     allend = time.time()
     print('Make data successfully! It costs %.2f Seconds'%(allend - allstart))
