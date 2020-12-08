@@ -1,7 +1,11 @@
 import os
+import sys
+import torch
+sys.path.append("input")
+from vgg_imagenet import vgg
 
 class makenet():
-    def __init__(self):
+    def __init__(self, netpath):
         self.bns = [""]
         self.layer = []
         self.convs = []
@@ -12,159 +16,8 @@ class makenet():
         self.avginit = []
         self.avgford = []
         self.classname = ""
-        self.fvggnet = open("debug/vggnet.py", "a")
-        self.fmakenet = open("debug/makenet.py", "a")
-
-    """
-    description: Add import code form vgg_imagenet.py to makenet.py
-    parameter: filename —— vgg_imagenet.py
-    return value: NULL
-    """
-    def make_config(self, filename):
-        with open(filename, 'r') as file:
-            while True:
-                line = file.readline()
-                if line.startswith("#") is False:
-                    if "import math" in line:
-                        self.fmakenet.write("import sys\n")
-                    if "from quant_layer import " in line:
-                        self.fmakenet.write("sys.path.append(\"input\")\n")
-                    self.fmakenet.write(line)
-                if line.strip() == "}":
-                    break
-        self.fmakenet.write('\n')
-
-    """
-    description: Add "class BasicBlock" code form vgg_imagenet.py to makenet.py
-    parameter: filename —— vgg_imagenet.py
-    return value: NULL
-    """
-    def make_block(self, filename):
-        read_flag = 0
-        with open(filename, 'r') as file:
-            while True:
-                line = file.readline()
-                if line.startswith("#") is False:
-                    if "class BasicBlock" not in line and read_flag == 0:
-                        continue
-                    self.classname = "BasicBlock"
-                    read_flag = 1
-                    if line.startswith("class ") and "BasicBlock" not in line:
-                        break
-                    self.fmakenet.write(line)
-
-    """
-    description: Add "class vgg" code form vgg_imagenet.py to makenet.py
-    parameter: filename —— vgg_imagenet.py
-    return value: NULL
-    """
-    def make_class(self, filename):
-        read_flag = 0
-        with open(filename, 'r') as file:
-            while True:
-                line = file.readline()
-                if line.strip().startswith("#") is False:
-                    if "class vgg" not in line and read_flag == 0:
-                        continue
-                    read_flag = 1
-                    if line.strip().startswith("def ") and "__init__" not in line:
-                        break
-                    self.fmakenet.write(line)
-
-    """
-    description: Add "def make_layers" code form vgg_imagenet.py to makenet.py
-    parameter: filename —— vgg_imagenet.py
-    return value: NULL
-    """
-    def make_layers(self, filename):
-        read_flag = 0
-        with open(filename, 'r') as file:
-            while True:
-                line = file.readline()
-                if line.strip().startswith("#") is False:
-                    if "def make_layers" not in line and read_flag == 0:
-                        continue
-                    read_flag = 1
-                    if line.strip().startswith("def ") and "make_layers" not in line:
-                        break
-                    self.fmakenet.write(line)
-
-    """
-    description: Add "def padding" code form vgg_imagenet.py to makenet.py
-    parameter: filename —— vgg_imagenet.py
-    return value: NULL
-    """
-    def make_padding(self, filename):
-        read_flag = 0
-        with open(filename, 'r') as file:
-            while True:
-                line = file.readline()
-                if line.strip().startswith("#") is False:
-                    if "def padding" not in line and read_flag == 0:
-                        continue
-                    read_flag = 1
-                    if line.strip().startswith("def ") and "padding" not in line:
-                        break
-                    self.fmakenet.write(line)
-
-    """
-    description: Add "def forward" code form vgg_imagenet.py to makenet.py
-    parameter: filename —— vgg_imagenet.py
-    return value: NULL
-    """
-    def make_forward(self, filename):
-        read_flag = 0
-        with open(filename, 'r') as file:
-            while True:
-                line = file.readline()
-                if line.strip().startswith("#") is False:
-                    if line.strip().startswith("class "):
-                        self.classname = line.split(' ', 1)[1].split('(', 1)[0]
-                    if self.classname != "vgg":
-                        continue
-                    if "def forward" not in line and read_flag == 0:
-                        continue
-                    read_flag = 1
-                    if line.strip().startswith("def ") and "forward" not in line:
-                        break
-                    self.fmakenet.write(line)
-
-    """
-    description: Add "def _initialize_weights" code form vgg_imagenet.py to makenet.py
-    parameter: filename —— vgg_imagenet.py
-    return value: NULL
-    """
-    def make_weight(self, filename):
-        read_flag = 0
-        with open(filename, 'r') as file:
-            while True:
-                line = file.readline()
-                if line.strip().startswith("#") is False:
-                    if "def _initialize_weights" not in line and read_flag == 0:
-                        continue
-                    read_flag = 1
-                    if "= vgg(" in line:
-                        break
-                    self.fmakenet.write(line)
-
-    """
-    description: Add "main" code for form vgg_imagenet.py to makenet.py
-    parameter: filename —— vgg_imagenet.py
-    return value: NULL
-    """
-    def make_main(self, filename):
-        read_flag = 0
-        with open(filename, 'r') as file:
-            for line in file:
-                if line.strip().startswith("#") is False and line.strip().startswith("print") is False:
-                    if "= vgg(" not in line and read_flag == 0:
-                        continue
-                    read_flag = 1
-                    self.fmakenet.write(line)
-                if "= vgg(" in line:
-                    outvgg = "{}{}{}".format("print(\"vgg_module = \", ", line.strip().split(" ")[0], ")\n")
-                    self.fmakenet.write(outvgg)
-                    return
+        self.layer_cnts = 0
+        self.fvggnet = open(netpath, "a")
 
     """
     description: Add import code to vggnet.py
@@ -199,24 +52,15 @@ class makenet():
     return value: NULL
     """
     def _make_init(self):
-        for i in range(len(self.layer)):
-            if "Conv2d" in str(self.layer[i]):
-                self.convs.append(self.layer[i])
-            elif "BatchNorm2d" in str(self.layer[i]):
-                if self.bns[0] == "True":
-                    self.bns.append(self.layer[i])
-            elif "MaxPool2d" in str(self.layer[i]):
-                self.pools.append(self.layer[i])
-
         for i in range(len(self.pools)):
             self.fvggnet.write(
-                f'        self.pool{str(i+1)} = nn.{self.pools[i].split(":")[1].strip()}\n')
+                f'        self.pool{str(i+1)} = nn.{self.pools[i]}\n')
         for j in range(len(self.convs)):
             self.fvggnet.write(
-                f'        self.conv{str(j+1)} = nn.{self.convs[j].split(":")[1].strip()}\n')
+                f'        self.conv{str(j+1)} = nn.{self.convs[j]}\n')
             if self.bns[0] == "True":
                 self.fvggnet.write(
-                    f'        self.bn{str(j+1)} = nn.{self.bns[j+1].split(":")[1].strip()}\n')
+                    f'        self.bn{str(j+1)} = nn.{self.bns[j+1]}\n')
         self.fvggnet.write("\n")
 
         for i in range(len(self.avginit)):
@@ -302,16 +146,28 @@ class makenet():
         self.fvggnet.write("        return x\n")
 
     """
-    description: Get data from layerinfo
-    parameter: file —— layerinfo
+    description: Get data from netfile
+    parameter: NULL
     return value: NULL
     """
-    def splicing_layers(self, file):
-        with open(file, "r") as f:
-            lines = f.readline()
-            while lines:
-                lines = f.readline()
-                self.layer.append(lines)
+    def splicing_layers(self):
+        model = vgg()
+        for m in model.modules():
+            if isinstance(m, torch.nn.Conv2d):
+                self.convs.append(m)
+                self.layer.append(m)
+                self.layer_cnts += 1
+            elif isinstance(m, torch.nn.BatchNorm2d):
+                self.bns.append(m)
+                self.layer.append(m)
+            elif isinstance(m, (torch.nn.ReLU)):
+                self.layer.append(m)
+            elif isinstance(m, torch.nn.MaxPool2d):
+                self.pools.append(m)
+                self.layer.append(m)
+                self.layer_cnts += 1
+            elif isinstance(m, (torch.nn.AvgPool2d, torch.nn.Linear)):
+                self.layer_cnts += 1
 
     """
     description: Get op code from vgg_imagenet.py
@@ -367,18 +223,7 @@ def gen_net(mknet, filename):
     return code:
                 None
     """
-    mknet.make_config(filename)
-    mknet.make_block(filename)
-    mknet.make_class(filename)
-    mknet.make_layers(filename)
-    mknet.make_padding(filename)
-    mknet.make_forward(filename)
-    mknet.make_weight(filename)
-    mknet.make_main(filename)
-    mknet.fmakenet.close()
-
-    os.system("python3 debug/makenet.py > debug/layerinfo")
-    mknet.splicing_layers("debug/layerinfo")
+    mknet.splicing_layers()
     mknet.bns[0] = mknet.get_op_code(filename, "bn")
     mknet.get_op_code(filename, "avgpool")
     mknet.get_op_code(filename, "weight")

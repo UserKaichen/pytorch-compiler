@@ -6,17 +6,21 @@ import threading
 import struct as st
 
 class load_pt():
-    def __init__(self):
+    def __init__(self, ptpath, confpath, ptdtpath):
         self.in_q = "5"
+        self.padding = ""
         self.layermsg = ""
         self.layer_cnts = 0
         self.in_feature_h = 0
         self.in_feature_w = 0
-        self.padding_param = ""
         self.layers = [["", ""]]
         self.in_channels_bf = ""
         self.out_channels_bf = ""
 
+        self.confpath = confpath
+        self.ptdtpath = ptdtpath
+        if not os.path.exists(self.confpath):
+            os.mkdir(self.confpath)
 
     def get_layer_info(self, path, flag):
         """
@@ -35,6 +39,7 @@ class load_pt():
         if int(str(find_flg).split(":", 1)[1]) == 0:
             print("please do not send layer_num:0")
             exit(0)
+
         next_flg = f'layer_num:{int(str(find_flg).split(":", 1)[1]) + 1}'
         with open(path, 'r') as file_read:
             for line in file_read:
@@ -77,7 +82,7 @@ class load_pt():
         return code:
                     None
         """
-        path = f'debug/output/{filename}.txt'
+        path = f'{self.ptdtpath}/{filename}.txt'
         with open(path, 'w') as fw:
             if "quant_" in filename:
                 fw.write(str(filedata))
@@ -132,9 +137,10 @@ class load_pt():
         return code:
                     None
         """
-        if type == "pool" and int(out_feature_h) == 7 and "padding param: " in self.padding_param:
-            self.in_feature_h = str(int(self.padding_param.split(" ", 6)[4].split(":")[1]))
-            self.in_feature_w = str(int(self.padding_param.split(" ", 6)[5].split(":")[1]))
+        if type == "pool" and int(out_feature_h) == 7 and "padding param" in self.padding:
+            padding_info = self.padding.split(" ", 6)
+            self.in_feature_h = str(int(padding_info[4].split(":")[1]))
+            self.in_feature_w = str(int(padding_info[5].split(":")[1]))
         else:
             self.in_feature_h = out_feature_h
             self.in_feature_w = out_feature_w
@@ -160,8 +166,8 @@ class load_pt():
                     stride_x:      Stride of the convolution in the x direction
                     stride_y:      Stride of the convolution in the y direction
         """
-        stride_x = stride_y = ""
-        in_channels = out_channels = ""
+        stride_x      = stride_y      = ""
+        in_channels   = out_channels  = ""
         out_feature_w = out_feature_h = ""
         kernel_size_x = kernel_size_y = ""
 
@@ -262,9 +268,9 @@ class load_pt():
         return code:
                     None
         """
-        in_q = out_q = ""
-        layer_num = relu = ""
-        param = config = []
+        param     = config = []
+        in_q      = out_q  = ""
+        layer_num = relu   = ""
 
         for i in range(len(self.layermsg)):
             if self.layermsg[i].startswith("layer_num:") is True:
@@ -285,9 +291,12 @@ class load_pt():
             f'act0 file               : layers.{str(int(layer_num) - 1)}.conv.input.6.txt')
         config.append(
             f'output file             : layers.{str(int(layer_num) - 1)}.quant.output.6.txt')
-        config.append(f'weight file             : layers.{str(int(layer_num) - 1)}.conv.weight.txt')
-        config.append(f'bn k file               : layers.{str(int(layer_num) - 1)}.bn.bn_k.txt')
-        config.append(f'bn b file               : layers.{str(int(layer_num) - 1)}.bn.bn_b.txt')
+        config.append(
+            f'weight file             : layers.{str(int(layer_num) - 1)}.conv.weight.txt')
+        config.append(
+            f'bn k file               : layers.{str(int(layer_num) - 1)}.bn.bn_k.txt')
+        config.append(
+            f'bn b file               : layers.{str(int(layer_num) - 1)}.bn.bn_b.txt')
 
         self.write_to_file(fw, config)
         self.out_to_in(out_feature_h, out_feature_w, in_channels, out_channels, "conv")
@@ -301,13 +310,13 @@ class load_pt():
         return code:
                     None
         """
-        in_q = out_q = ""
-        param = config = []
-        poolname = "Maxpooling"
+        param     = config  = []
+        in_q      = out_q   = ""
+        poolname  = "Maxpooling"
 
         for i in range(len(self.layermsg)):
-            if "padding param:" in self.layermsg[i]:
-                self.padding_param = self.layermsg[i]
+            if "padding param" in self.layermsg[i]:
+                self.padding = self.layermsg[i]
             elif "param:" in self.layermsg[i]:
                 param = self.layermsg[i].split(" ")
             if "avgpool" in self.layermsg[i]:
@@ -335,9 +344,9 @@ class load_pt():
         return code:
                     None
         """
-        in_q = out_q = ""
-        fc_name = relu = ""
-        param = config = []
+        param   = config = []
+        in_q    = out_q  = ""
+        fc_name = relu   = ""
 
         for i in range(len(self.layermsg)):
             if " param:" in self.layermsg[i]:
@@ -381,7 +390,7 @@ class load_pt():
         padding = ""
         if layername != "1":
             padding = f'_{str(int(layername) - 1)}'
-        path = f'debug/output/config{padding}.txt'
+        path = f'{self.confpath}/config{padding}.txt'
 
         with open(path, 'w') as fw:
             layer_type = " "
@@ -470,23 +479,6 @@ class load_pt():
                 write_data.start()
                 write_data.join()
 
-    def get_layercount(self, filename):
-        """
-        description:
-                    Get the number of vggnet's layers
-        parameters:
-                    filename: Relative path of tensor file
-        return code:
-                    None
-        """
-        with open(filename, 'r') as file:
-            while True:
-                line = file.readline()
-                if line.strip() == "":
-                    break
-                elif ": BasicBlock(" in line or "Pool2d(" in line or "Linear" in line:
-                    self.layer_cnts += 1
-
     def get_tensorinfo(self, filename):
         """
         description:
@@ -502,11 +494,12 @@ class load_pt():
                 if line.strip() == "":
                     continue
                 elif "torch.rand" in line:
-                    self.in_feature_h = line.split("(")[1].split(")")[0].split(",", 4)[2].strip()
-                    self.in_feature_w = line.split("(")[1].split(")")[0].split(",", 4)[3].strip()
+                    line_split = line.split("(")[1].split(")")[0].split(",", 4)
+                    self.in_feature_h = line_split[2].strip()
+                    self.in_feature_w = line_split[3].strip()
                     break
 
-def gen_txt(loadpt):
+def gen_txt(loadpt, layer_cnts):
     """
     description:
                 Load pt file and format output
@@ -522,7 +515,7 @@ def gen_txt(loadpt):
     onelayer_cnt = []
 
     loadpt.get_tensorinfo("debug/vggnet.py")
-    loadpt.get_layercount("debug/layerinfo")
+    loadpt.layer_cnts = layer_cnts
 
     with open(pt_path, 'rb') as f:
         buffer = io.BytesIO(f.read())
@@ -568,7 +561,7 @@ def gen_txt(loadpt):
                 continue
         elif "quant_" in tmpstr or "classifier" in tmpstr:
             write_data = threading.Thread(target=loadpt.write_pt_data,
-                                          args=(quant_list[i], quant_list[i + 1], scale))
+                            args=(quant_list[i], quant_list[i + 1], scale))
             write_data.start()
             write_data.join()
 
@@ -583,7 +576,7 @@ if __name__ == '__main__':
                 None
     """
     os.chdir("..")
-    pt_path = "input/vgg_imagenet.pt"
-    loadpt = load_pt()
-    gen_txt(loadpt)
+    ptpath = "input/vgg_imagenet.pt"
+    loadpt = load_pt(ptpath)
+    gen_txt(loadpt, 23)
     os.chdir("script")
