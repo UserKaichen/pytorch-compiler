@@ -118,10 +118,11 @@ def get_data(model, output_dir='out'):
 
     return model
 
-assert len(sys.argv) == 3, f'Usage: {sys.argv[0]} path/to/image path/to/output/dir'
+assert len(sys.argv) == 4, f'Usage: {sys.argv[0]} path/to/image path/to/ptfile path/to/output/dir'
 
 img_path = sys.argv[1]
-output_dir = sys.argv[2]
+pt_path = sys.argv[2]
+output_dir = sys.argv[3]
 
 model = vgg()
 # TODO: merge this into vgg.py
@@ -133,7 +134,7 @@ for m in model.modules():
         m.register_buffer(f'bn_b', torch.zeros_like(m.weight.data))
 
 # Load checkpoint
-model.load_state_dict(torch.load('vgg_imagenet.pt'))
+model.load_state_dict(torch.load(pt_path))
 
 # Do quantization to int and print data
 model = get_data(model, output_dir)
