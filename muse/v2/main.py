@@ -43,10 +43,10 @@ def gen_fpga(filepath):
                   *k* data_for_fpga",
                  f'cp -af {confpath}/* {ptdtpath}/* {bmpdtpath}/* imagenet/',
                  "python ../input/config_gen_file.py -d ../imagenet/ -n imagenet_img6 -f",
-                 f'mv data_for_fpga {outputpath}' ]
+                 f'mv {filepath}/data_for_fpga {outputpath}' ]
 
     for i in range(len(cmd_list)):
-        if "cp -af" in cmd_list[i]:
+        if "cp -af " in cmd_list[i] or "mv " in cmd_list[i]:
             os.chdir("..")
         elif "python" in cmd_list[i]:
             os.chdir(filepath)	
@@ -118,14 +118,12 @@ def gen_bmp(vgglog):
     return code:
                 None
     """
-    os.chdir("input")
-    cmd_list = [ f'python3 inout_print.py im6.bmp {bmpdtpath}',
+    cmd_list = [ f'python3 input/inout_print.py input/im6.bmp {ptpath} {bmpdtpath}',
                  f'ls {bmpdtpath}/quant_fc3.output.int.6.txt' ]
 
     for i in range(len(cmd_list)):
         os.system(cmd_list[i])
 
-    os.chdir("..")
     deal_fc_k(vgglog)
     print("run gen_bmp successfully")
 
