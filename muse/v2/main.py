@@ -6,7 +6,6 @@ import torch
 import shutil
 import threading
 from optparse import OptionParser
-from script.makenet import makenet
 from script.load_pt import load_pt
 
 def option_parse():
@@ -102,12 +101,20 @@ def deal_fc_k(vgglog):
             
     for i in range(len(fc_k_list)):
         with open(f'{bmpdtpath}/{fc_k_list[i]}', 'w') as fw:
-            write_fc_k = threading.Thread(target=write_fck_data,
-                                  args=(fw, data_list[i], int(fc_channel[i])))
+            if len(fc_channel) == 1:
+                write_fc_k = threading.Thread(target=write_fck_data,
+                                      args=(fw, data_list[i], int(fc_channel[0])))
+            else:
+                write_fc_k = threading.Thread(target=write_fck_data,
+                                      args=(fw, data_list[i], int(fc_channel[i])))
             write_fc_k.start()
             write_fc_k.join()
-        print("write %s to %s file %s times success..." 
-              %(data_list[i].strip(), fc_k_list[i], fc_channel[i]))
+        if len(fc_channel) == 1:
+            print("write %s to %s file %s times success..."
+                  %(data_list[i].strip(), fc_k_list[i], fc_channel[0]))
+        else:
+            print("write %s to %s file %s times success..."
+                  %(data_list[i].strip(), fc_k_list[i], fc_channel[i]))
     
 def gen_bmp(vgglog):
     """
@@ -127,6 +134,21 @@ def gen_bmp(vgglog):
     deal_fc_k(vgglog)
     print("run gen_bmp successfully")
 
+def get_cnts():
+    """
+    description: Get counts of layers
+    parameter: NULL
+    return value: NULL
+    """
+    layer_cnts = 0
+
+    with open(f'debug/{logname}', 'r') as f:
+        for lines in f.readlines():
+            if "layer_num:" in lines:
+                layer_cnts += 1
+
+    return layer_cnts
+
 def gen_txt(loadpt):
     """
     description:
@@ -142,7 +164,7 @@ def gen_txt(loadpt):
     quant_list = []
     onelayer_cnt = []
 
-    loadpt.get_tensorinfo("debug/vggnet.py")
+    loadpt.get_tensorinfo(netpath)
 
     with open(f'{ptdtpath}/img.input.q.txt', 'w') as fw:
         fw.write(loadpt.in_q)
@@ -169,7 +191,7 @@ def gen_txt(loadpt):
         counts = 0
 
     del (loadpt.layers[0])
-    logpath = f'{os.getcwd()}/debug/vggnet.log'
+    logpath = f'{os.getcwd()}/debug/{logname}'
     for i in range(loadpt.layer_cnts):
         layername = f'layer_num:{str(i + 1)}'
         loadpt.layermsg = loadpt.get_layer_info(logpath, layername)
@@ -200,32 +222,6 @@ def gen_txt(loadpt):
             write_data.join()
 
     print("run gen_txt successfully")
-
-def gen_net(mknet, filename):
-    """
-    description:
-                Generate model files
-    parameters:
-                mknet:    The Class of makenet
-                filename: The network name that the compiler can resolve
-    return code:
-                None
-    """
-    mknet.splicing_layers()
-    mknet.bns[0] = mknet.get_op_code(filename, "bn")
-    mknet.get_op_code(filename, "avgpool")
-    mknet.get_op_code(filename, "weight")
-    mknet.get_op_code(filename, "quant")
-    mknet.get_op_code(filename, "fc")
-    mknet._make_head()
-    mknet._make_init()
-    mknet._make_padding(filename)
-    mknet._make_forward()
-    mknet._make_avgpool()
-    mknet._make_tail()
-    mknet.fvggnet.close()
-
-    print("make vggnet.py successfully")
 
 def prints(cnt, total, msg):
     """
@@ -299,14 +295,14 @@ def checkfile(filelist):
     """
     for i in range(len(filelist)):
         file = "input/"
-        if "imagenet" == filelist[i] or "vgg_imagenet.p" in filelist[i]:
+        if "imagenet" in filelist[i] or "ResNet" in filelist[i]:
             file = ""
         name = f'{file}{filelist[i]}'
-        if not os.path.exists(name):
+        if not os.path.exists(name) and not os.path.exists(filelist[i]):
             print("%s not found...\nPlease try again!" % name)
             sys.exit(1)
         else:
-            print("check %s success" % name)
+            print("check %s success" % filelist[i])
 
     print("checkfile successfully")
 
@@ -323,7 +319,6 @@ if __name__ == '__main__':
     start = time.time()
     allstart = start
 
-    opt = option_parse()
     parase = option_parse()
     ptpath = parase.pt_name
     netpath = parase.net_name
@@ -332,30 +327,34 @@ if __name__ == '__main__':
     bmpdtpath = parase.bmpdata_dir
     outputpath = parase.output_dir
 
+    make_bin = ["Make the bin file needed by fpga...",
+                 "gen_fpga('imagenet')"]
+    logname = "vggnet.log"
+    if "resnet" in netpath.lower():
+        logname = "resnet.log"
+        make_bin = ["Resnet not run fpga", ""]
+
     fileslist = ["config_gen_file.py",  "inout_print.py", "quant_layer.py",  "quantop.py",
                  "im6.bmp",              ptpath,           netpath]
-    cleanlist = ["data_for_fpga",      "vggnet.log",      "vggnet.py",       "debug", 
+    cleanlist = ["data_for_fpga",       logname,           "debug",
                   confpath,             ptdtpath,          outputpath]
     
     run_step = [["Check the necessary files...",
                  "checkfile(fileslist)"],
                 ["Clean the necessary files...",
                  "clean_ups(cleanlist)"],
-                ["Make network model file...",
-                 "mknet = makenet('debug/vggnet.py')",
-                 "gen_net(mknet, netpath)"],
                 ["Run the network model file...", 
-                 "os.system('python3 debug/vggnet.py > debug/vggnet.log')",
-                 "print('run vggnet.py successfully')"],
+                 f'os.system(\'python3 {netpath} > debug/{logname}\')',
+                 f'print(\'run {netpath} successfully\')'],
                 ["Load pt file and format output...", 
                  "os.system(f'mkdir -p {ptdtpath} {outputpath}')",
                  "loadpt = load_pt(ptpath, confpath, ptdtpath)",
-                 "loadpt.layer_cnts = mknet.layer_cnts",
+                 "loadpt.layer_cnts = get_cnts()",
+                 f'loadpt.net_name = \'{logname.split(".")[0]}\'',
                  "gen_txt(loadpt)"],
                 ["Generate input and output from bmp...",
-                 "gen_bmp('debug/vggnet.log')"],
-                ["Make the bin file needed by fpga...",
-                 "gen_fpga('imagenet')"]]
+                 f'gen_bmp(\'debug/{logname}\')'],
+                 make_bin]
 
     for i in range(len(run_step)):
         start = time.time()
