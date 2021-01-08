@@ -311,7 +311,8 @@ class Compiler {
     auto size = pt->sizes().concrete_sizes();
     if (size.has_value()) {
         auto sizes = pt->sizes().concrete_sizes().value();
-        param.output_size_x = sizes[1];
+        param.output_size_x = sizes[2];
+        param.output_size_y = sizes[3];
     } else {
         TORCH_CHECK(
                 node->kind() == prim::CallMethod,
@@ -322,7 +323,7 @@ class Compiler {
         auto children_output = child_graph->outputs()[0]->type()->cast<TensorType>();
         auto sizes = children_output->sizes().concrete_sizes().value();
         param.output_size_x = sizes[2];
-        param.output_size_y = sizes[2];
+        param.output_size_y = sizes[3];
     }
 
     return param;
