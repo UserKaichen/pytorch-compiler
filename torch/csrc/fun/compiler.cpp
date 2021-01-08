@@ -398,7 +398,6 @@ class Compiler {
     return param;
   }
 
-
   void BasicBlock_node(torch::jit::Value* value) {
     auto pt = value->type()->cast<TensorType>();
     TORCH_CHECK(pt);
