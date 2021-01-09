@@ -8,7 +8,6 @@ import torch.nn as nn
 
 from quant_layer import QuantLayer
 
-
 __all__ = ['vgg']
 
 defaultcfg = {
@@ -40,13 +39,9 @@ class vgg(nn.Module):
             cfg = defaultcfg[depth]
 
         self.layers = self.make_layers(cfg, True)
-
-        # self.extra_layer = BasicBlock(512, 512, stride=2)
-
         self.avgpool_1 = nn.AvgPool2d(2, stride=2)
         self.avgpool_2 = nn.AvgPool2d((4, 4))
 
-        # self.classifier = nn.Linear(cfg[-1], num_classes)
         self.quant_avg1 = QuantLayer()
         self.quant_avg2 = QuantLayer()
         self.quant_fc1 = QuantLayer()
@@ -70,13 +65,11 @@ class vgg(nn.Module):
     def make_layers(self, cfg, batch_norm=False):
         layers = []
         in_channels = 3
-        # layers += [nn.BatchNorm2d(3)]
         for v in cfg:
             if v == 'M':
                 layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
             else:
                 layers += [BasicBlock(in_channels, v, batch_norm=batch_norm)]
-
                 in_channels = v
         return nn.Sequential(*layers)
 
@@ -117,4 +110,10 @@ class vgg(nn.Module):
             elif isinstance(m, nn.Linear):
                 m.weight.data.normal_(0, 0.01)
                 m.bias.data.zero_()
-m = vgg()
+
+
+if __name__ == '__main__':
+    m = vgg()
+    example_input = torch.rand(1, 3, 224, 224)
+    module = torch.jit.trace(m, example_input)
+    module._c._fun_compile()

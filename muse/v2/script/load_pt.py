@@ -137,16 +137,21 @@ class load_pt():
         return code:
                     None
         """
-        if type == "pool" and int(out_feature_h) == 7 and "padding param" in self.padding:
-            padding_info = self.padding.split(" ", 6)
-            self.in_feature_h = str(int(padding_info[4].split(":")[1]))
-            self.in_feature_w = str(int(padding_info[5].split(":")[1]))
-        else:
-            self.in_feature_h = out_feature_h
-            self.in_feature_w = out_feature_w
+        if self.net_name == "vggnet":
+            if type == "pool" and int(out_feature_h) == 7 and len(self.padding):
+                padding_info = self.padding.split(" ", 6)
+                self.in_feature_h = str(int(padding_info[4].split(":")[1]))
+                self.in_feature_w = str(int(padding_info[5].split(":")[1]))
+            else:
+                self.in_feature_h = out_feature_h
+                self.in_feature_w = out_feature_w
+        elif self.net_name == "resnet":
+           self.in_feature_h = out_feature_h
+           self.in_feature_w = out_feature_w
         if type != "pool":
             self.in_channels_bf = in_channels
             self.out_channels_bf = out_channels
+
 
     def get_all_params(self, config, param):
         """
@@ -220,9 +225,10 @@ class load_pt():
         if layer_type == "pool":
             config.append(self.in_channels_bf)
             config.append(self.out_channels_bf)
-            ratio = int(kernel_size_x)
-            out_feature_h = str(int(int(float(self.in_feature_h)) / ratio))
-            out_feature_w = str(int(int(float(self.in_feature_w)) / ratio))
+            if (len(kernel_size_x)):
+                ratio = int(kernel_size_x)
+                out_feature_h = str(int(int(float(self.in_feature_h)) / ratio))
+                out_feature_w = str(int(int(float(self.in_feature_w)) / ratio))
         config.append(f'input feature_h = {self.in_feature_h}')
         config.append(f'input feature_w = {self.in_feature_w}')
         if layer_type != "pool":
@@ -406,8 +412,10 @@ class load_pt():
                 self.write_pool_config(fw)
             elif "fc" in layer_type:
                 self.write_fc_config(fw, quant_list)
+            elif "AdaptAvgPool" in layer_type:
+                self.write_pool_config(fw)
             else:
-                self.print("Unknown layer type...")
+                print("Unknown layer type...", layer_type)
                 return
 
         print("%s write config success" % path)
@@ -499,72 +507,6 @@ class load_pt():
                     self.in_feature_w = line_split[3].strip()
                     break
 
-def gen_txt(loadpt, layer_cnts):
-    """
-    description:
-                Load pt file and format output
-    parameters:
-                loadpt: The Class of load_pt
-    return code:
-                None
-    """
-    counts = 0
-    name_list = []
-    data_list = []
-    quant_list = []
-    onelayer_cnt = []
-
-    loadpt.get_tensorinfo("debug/vggnet.py")
-    loadpt.layer_cnts = layer_cnts
-
-    with open(pt_path, 'rb') as f:
-        buffer = io.BytesIO(f.read())
-        dict = torch.load(buffer, map_location=torch.device('cpu'))
-        for k, v in dict.items():
-            if "quant_" in k or "classifier." in k:
-                quant_list.append(k)
-                quant_list.append(v)
-            name_list.append(k)
-            data_list.append(v)
-
-    for i in range(loadpt.layer_cnts):
-        layer = f'layers.{i}.'
-        for j in range(len(name_list)):
-            if layer in name_list[j]:
-                loadpt.layers.append([name_list[j], data_list[j]])
-                counts += 1
-        onelayer_cnt.append(str(counts))
-        counts = 0
-
-    del (loadpt.layers[0])
-    logpath = f'{os.getcwd()}/debug/vggnet.log'
-    for i in range(loadpt.layer_cnts):
-        layername = f'layer_num:{str(i + 1)}'
-        loadpt.layermsg = loadpt.get_layer_info(logpath, layername)
-        loadpt.splicing_output(int(onelayer_cnt[i]), counts, quant_list)
-        counts += int(onelayer_cnt[i])
-
-    scale = fcname = weight = ""
-    for i in range(len(quant_list)):
-        tmpstr = str(quant_list[i])
-        if ".scale" in tmpstr or ".weight" in tmpstr:
-            if ".scale" in tmpstr:
-                scale = quant_list[i + 1]
-            else:
-                fcname = quant_list[i]
-                weight = quant_list[i + 1]
-            if len(fcname) and len(str(scale)) and len(str(weight)):
-                write_data = threading.Thread(target=loadpt.write_pt_data,
-                                              args=(fcname, weight, scale))
-                write_data.start()
-                write_data.join()
-                continue
-        elif "quant_" in tmpstr or "classifier" in tmpstr:
-            write_data = threading.Thread(target=loadpt.write_pt_data,
-                            args=(quant_list[i], quant_list[i + 1], scale))
-            write_data.start()
-            write_data.join()
-
 
 if __name__ == '__main__':
     """
@@ -575,8 +517,4 @@ if __name__ == '__main__':
     return code: 
                 None
     """
-    os.chdir("..")
-    ptpath = "input/vgg_imagenet.pt"
-    loadpt = load_pt(ptpath)
-    gen_txt(loadpt, 23)
-    os.chdir("script")
+    pass
