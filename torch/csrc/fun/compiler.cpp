@@ -19,6 +19,7 @@ bool BasicBlock_flag;
 int  downsample_flag;
 
 torch::jit::Node* node_back;
+torch::jit::Node* relu_node_bk;
 torch::jit::Value* GetAttrValue;
 
 class Allocator {
@@ -743,10 +744,18 @@ class Compiler {
     //relu layer in forward  && in BasicBlock && not in classifier
     else if (kind == aten::relu || 
       (is_module(node, "__torch__.torch.nn.modules.activation.ReLU"))) {
+
+      //avoid relu layer in forward1
+      auto nodeinput = node->inputs()[0]->node();
+      if (relu_node_bk == nodeinput) {
+          return;
+      }
+
       param_relu.en = 1;
       param_relu.mode = "00";
       param_relu.param = "0_32";
 
+      relu_node_bk = nodeinput;
       return;
     }
 
