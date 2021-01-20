@@ -19,6 +19,7 @@ bool BasicBlock_flag;
 int  downsample_flag;
 
 torch::jit::Node* node_back;
+torch::jit::Node* relu_node_bk;
 torch::jit::Value* GetAttrValue;
 
 class Allocator {
@@ -311,7 +312,8 @@ class Compiler {
     auto size = pt->sizes().concrete_sizes();
     if (size.has_value()) {
         auto sizes = pt->sizes().concrete_sizes().value();
-        param.output_size_x = sizes[1];
+        param.output_size_x = sizes[2];
+        param.output_size_y = sizes[3];
     } else {
         TORCH_CHECK(
                 node->kind() == prim::CallMethod,
@@ -322,7 +324,7 @@ class Compiler {
         auto children_output = child_graph->outputs()[0]->type()->cast<TensorType>();
         auto sizes = children_output->sizes().concrete_sizes().value();
         param.output_size_x = sizes[2];
-        param.output_size_y = sizes[2];
+        param.output_size_y = sizes[3];
     }
 
     return param;
@@ -396,7 +398,6 @@ class Compiler {
   
     return param;
   }
-
 
   void BasicBlock_node(torch::jit::Value* value) {
     auto pt = value->type()->cast<TensorType>();
@@ -743,10 +744,18 @@ class Compiler {
     //relu layer in forward  && in BasicBlock && not in classifier
     else if (kind == aten::relu || 
       (is_module(node, "__torch__.torch.nn.modules.activation.ReLU"))) {
+
+      //avoid relu layer in forward1
+      auto nodeinput = node->inputs()[0]->node();
+      if (relu_node_bk == nodeinput) {
+          return;
+      }
+
       param_relu.en = 1;
       param_relu.mode = "00";
       param_relu.param = "0_32";
 
+      relu_node_bk = nodeinput;
       return;
     }
 
