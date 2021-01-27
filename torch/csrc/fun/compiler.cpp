@@ -816,7 +816,9 @@ class Compiler {
             is_module(node_back, "__torch__.torch.nn.modules.conv.ConvTranspose2d")) {
             show_conv_param(node_back);
         }
+        std::string pad = "avg";
         if (is_module(node, "__torch__.torch.nn.modules.pooling.MaxPool2d")) {
+          pad = "max",
           BasicBlock_cnt++;
         }
 
@@ -824,21 +826,22 @@ class Compiler {
         layer_num++;
 	node_back  = node;
         string layer_bf = "";
-        layer_type = "pool" + to_string(num[1]);
+        layer_type = pad + "pool_" + to_string(num[1]);
         if (layer_num-1) {
           layer_bf = "    form layer_num:" + to_string(layer_num_bf) + " type:" + layer_type_bf;
         }
         std::cout << "layer_num:" << layer_num << " layer type:" << layer_type  << layer_bf << "\n";
         auto param = parsePool2d(node);
         auto size = param.kernel_size_x * param.kernel_size_y;
-        const std::string& poolname = layer_type;
+        std::string poolname = layer_type;
         if (BasicBlock_total == to_string(BasicBlock_cnt-1)) {
           BasicBlock_flag = false;
         }
         if (!BasicBlock_flag) {
-          const std::string& poolname = node->inputs()[0]->node()->s(attr::name);
+            poolname = node->inputs()[0]->node()->s(attr::name);
+            layer_type = poolname;
         }
-        std::cout << poolname << " param: pool_size " << size - 1 << " kernel_size_x:" << param.kernel_size_x 
+        std::cout << poolname << " param: pool_size:" << size - 1 << " kernel_size_x:" << param.kernel_size_x
                   << " kernel_size_y:" << param.kernel_size_y << " Pooling_en:1" << " oprands:" << 1.0 / size 
                   << " stride_x:" << param.stride_x << " stride_y:" << param.stride_y << std::endl;
         layer_num_bf  = layer_num;
