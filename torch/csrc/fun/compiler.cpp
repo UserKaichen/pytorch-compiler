@@ -834,12 +834,12 @@ class Compiler {
         auto param = parsePool2d(node);
         auto size = param.kernel_size_x * param.kernel_size_y;
         std::string poolname = layer_type;
-        if (BasicBlock_total == to_string(BasicBlock_cnt-1)) {
-          BasicBlock_flag = false;
-        }
         if (!BasicBlock_flag) {
             poolname = node->inputs()[0]->node()->s(attr::name);
             layer_type = poolname;
+        }
+        if (BasicBlock_total == to_string(BasicBlock_cnt-1)) {
+          BasicBlock_flag = false;
         }
         std::cout << poolname << " param: pool_size:" << size - 1 << " kernel_size_x:" << param.kernel_size_x
                   << " kernel_size_y:" << param.kernel_size_y << " Pooling_en:1" << " oprands:" << 1.0 / size 
