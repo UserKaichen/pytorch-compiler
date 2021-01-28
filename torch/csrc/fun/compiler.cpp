@@ -830,7 +830,6 @@ class Compiler {
         if (layer_num-1) {
           layer_bf = "    form layer_num:" + to_string(layer_num_bf) + " type:" + layer_type_bf;
         }
-        std::cout << "layer_num:" << layer_num << " layer type:" << layer_type  << layer_bf << "\n";
         auto param = parsePool2d(node);
         auto size = param.kernel_size_x * param.kernel_size_y;
         std::string poolname = layer_type;
@@ -841,6 +840,7 @@ class Compiler {
         if (BasicBlock_total == to_string(BasicBlock_cnt-1)) {
           BasicBlock_flag = false;
         }
+        std::cout << "layer_num:" << layer_num << " layer type:" << layer_type  << layer_bf << "\n";
         std::cout << poolname << " param: pool_size:" << size - 1 << " kernel_size_x:" << param.kernel_size_x
                   << " kernel_size_y:" << param.kernel_size_y << " Pooling_en:1" << " oprands:" << 1.0 / size 
                   << " stride_x:" << param.stride_x << " stride_y:" << param.stride_y << std::endl;
@@ -905,10 +905,11 @@ class Compiler {
         if (layer_num-1) {
           layer_bf = "    form layer_num:" + to_string(layer_num_bf) + " type:" + layer_type_bf;
         }
-        std::cout << "layer_num:" << layer_num << " layer type:" << layer_type  << layer_bf << "\n";
         auto param = parseAdapt(node);
         const std::string& poolname = layer_type;
-        std::cout << poolname << " param: output_size_x " << param.output_size_x << " output_size_y:" << param.output_size_y << std::endl;
+        std::cout << "layer_num:" << layer_num << " layer type:" << layer_type  << layer_bf << "\n";
+        std::cout << poolname << " param: output_size_x " << param.output_size_x << " output_size_y:"
+                  << param.output_size_y << std::endl;
         layer_num_bf  = layer_num;
         layer_type_bf = layer_type;
         return;
@@ -935,8 +936,8 @@ class Compiler {
         if (layer_num-1) {
             layer_bf = "    form layer_num:" + to_string(layer_num_bf) + " type:" + layer_type_bf;
         }
-        std::cout << "layer_num:" << layer_num << " layer type:" << layer_type  << layer_bf << "\n";
         auto param = parseLinear(node);
+        std::cout << "layer_num:" << layer_num << " layer type:" << layer_type  << layer_bf << "\n";
         std::cout << layer_type << " param:" << "in_features_x:" << param.in_features_x 
                   << " in_features_y:" << param.in_features_y << " out_features_x:" 
                   << param.out_features_x << " out_features_y:" << param.out_features_y << std::endl;
