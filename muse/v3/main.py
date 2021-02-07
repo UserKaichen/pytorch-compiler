@@ -47,17 +47,17 @@ def option_parse():
     parser = OptionParser(usage)
 
     parser.add_option("-p", "--pt_dir",      dest = "pt_name",    help = "PT file directory",      action = "store",
-                      type = "string",       default = f'{os.getcwd()}/input/vgg_imagenet.pt')
+                      type = "string",       default = f'input/vgg_imagenet.pt')
     parser.add_option("-n", "--net_dir",     dest ="net_name",    help = "Vggnet file directory",  action = "store",
-                      type = "string",       default = f'{os.getcwd()}/input/vgg_imagenet.py')
+                      type = "string",       default = f'input/vgg_imagenet.py')
     parser.add_option("-o", "--output_dir",  dest ="output_dir",  help = "Output file directory",  action = "store",
                       type = "string",       default = f'{os.getcwd()}/output')
     parser.add_option("-c", "--conf_dir",    dest ="conf_dir",    help = "Config file directory",  action = "store",
-                      type = "string",       default = f'{os.getcwd()}/debug/config')
+                      type = "string",       default = f'debug/config')
     parser.add_option("-t", "--ptdata_dir",  dest ="ptdata_dir",  help = "Ptdata file directory",  action = "store",
-                      type = "string",       default = f'{os.getcwd()}/debug/ptdata')
+                      type = "string",       default = f'debug/ptdata')
     parser.add_option("-m", "--bmpdata_dir", dest ="bmpdata_dir", help ="Bmpdata file directory",  action = "store",
-                      type = "string",       default = f'{os.getcwd()}/debug/bmpdata')
+                      type = "string",       default = f'debug/bmpdata')
 
     (options,args)=parser.parse_args()
     return options
