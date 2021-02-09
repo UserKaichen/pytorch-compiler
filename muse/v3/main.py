@@ -217,21 +217,6 @@ def align(address, factor):
     else:
         return (address // factor + 1) * factor 
 
-def tensor_print(tensor, N, C, H, W):
-    for n in range(N):
-        for c in range(C):
-            for h in range(H):
-                for w in range(W):
-                    print(f'tensor[{n}][{c}][{h}][{w}]=', (tensor[n][c][h][w]))
-                    #print(f'tensor[{n}][{c}][{h}][{w}]=', type(tensor[n][c][h][w]))
-                    #print(f'tensor[{n}][{c}][{h}][{w}]=', str(tensor[n][c][h][w]).split("(")[1].split(")")[0])
-    
-def locate_test(weight_bn_k, weight_bn_b, weight_data, layer_locate):
-    for i in range(len(layer_locate)):
-        print(f'layer_locate{i}={layer_locate[i]}')
-        print(f'weight_bn_k[i]={weight_bn_k[i]}')
-        print(f'weight_bn_b[i]={weight_bn_b[i]}')
-
 def get_layer_num(layer_name):
     #该函数可以不用遍历，在遍历维度的时候保存fclist_num=[21,22,23]即可。减少循环遍历
     pool_num = []
@@ -312,28 +297,27 @@ def weight_addr():
                 W = dim_list[1]
             for n in range(N):
                 if len(weight_bn_k) and len(weight_bn_b):
-                    # hexdata_k = '%X' % st.unpack('H', st.pack('e', weight_bn_k[n]))[0]
-                    # hexdata_b = '%X' % st.unpack('H', st.pack('e', weight_bn_b[n]))[0]
                     hexdata_k = '%X' % st.unpack('I', st.pack('f', weight_bn_k[n]))[0]
                     hexdata_b = '%X' % st.unpack('I', st.pack('f', weight_bn_b[n]))[0]
-                    # print(f'save bn_k={weight_bn_k[n]} bn_b={weight_bn_b[n]}', weight_bn_k[n], weight_bn_b[n], f'hexdata_k={hexdata_k}', f'hexdata_b={hexdata_b}')
                     for x in range(len(str(hexdata_k))):
                         if (x % 2) == 0:
                             layer_locate.append(hexdata_k[x] + hexdata_k[x+1])
                     for y in range(len(str(hexdata_b))):
                         if (y % 2) == 0:
                             layer_locate.append(hexdata_b[y] + hexdata_b[y+1])
-                else:
-                    for i in range(4*2):
-                        layer_locate.append("00")
                 for c in range(C):
                     for h in range(H):
+                        if dim_lens == 2:
+                            for i in range(4 * 2):
+                                layer_locate.append("00")
                         for w in range(W):
                             word_address = w + h*W + c*H*W + n*C*H*W
                             word_address += padding
                             if dim_lens == 4:
                                 rounds = round(weight_data[n][c][h][w].tolist() / scale)
                             elif dim_lens == 2:
+                                for i in range(4 * 2):
+                                    layer_locate.append("00")
                                 rounds = round(weight_data[h][w].tolist() / scale)
                             else:
                                 print(f'Unknown weight:{name} length:{dim_lens} dim:{dim_list}')
@@ -348,14 +332,23 @@ def weight_addr():
             if "classifier" in name:
                 fc_cnt += 1
                 layer_cnt = get_layer_num(f'fc{fc_cnt}')
+            if fc_flag and len(layer_locate):
+                print(".................Start Rearrange weight..............")
+                Rearrange_locate = []
+                for i in range(int(len(layer_locate) / (4 * 4))):
+                    for j in range(4 * 4):
+                        if j % 2 == 0:
+                            Rearrange_locate.append(layer_locate[j + 4 * 4 * i])
+                    for j in range(4 * 4):
+                        if j % 2:
+                            Rearrange_locate.append(layer_locate[j + 4 * 4 * i])
+                layer_locate = Rearrange_locate
             print(f'layer {str(layer_cnt)} bn_k+bn_b+conv_weight data', " save data success")
             datas_locate[k] = [f'layer {str(layer_cnt)} bn_k+bn_b+conv_weight data', [layer_locate]]
-            # print(f'layer_locate wbn_k={len(weight_bn_k)} wbn_b={len(weight_bn_b)} wdata={len(weight_data)} dlocate ={len(datas_locate)} dlocate[{k}]={len(datas_locate[k])} dlocate[{k}][0]\'s name={datas_locate[k][0]}')
             weight_bn_k = weight_bn_b = weight_data = layer_locate = []
             scale = fc_flag = 0
             datas_locate.append(datas_locate[k])
             k += 1
-            # return
     ADDRBLOCK += word_address + padding
     print("weight_addr   end:", ADDRBLOCK, "bus_addr:", bus_address())
     ADDRBLOCK = align(ADDRBLOCK, BUS_WIDTH)
@@ -471,7 +464,7 @@ def return_value(countnum):
 '''
 获取当前指令的ID
 '''
-def get_Inst_id_00(layernum):
+def get_Inst_id_00():
     return '{:02b}'.format(00)
 
 '''
@@ -491,39 +484,40 @@ def get_act_tile_hor_var(layernum):
 获取act  tile的水平方向的大小
 '''
 def get_act_tile_hor(layernum):
-    layer_type = find_type(layernum, "layer type:")
-    if "pool" in layer_type or "fc" in layer_type:
+    if "conv" in find_type(layernum, "layer type:"):
+        act_tile_hor = int(get_act_tile_hor_var(layernum)[0])
+        return '{:07b}'.format(act_tile_hor - 1)
+    else:
         return return_value(7)
-
-    act_tile_hor = int(get_act_tile_hor_var(layernum)[0])
-    return '{:07b}'.format(act_tile_hor)
 
 '''
 获取act  tile的垂直方向的大小
 '''
 def get_act_tile_ver(layernum):
-    layer_type = find_type(layernum, "layer type:")
-    if "pool" in layer_type or "fc" in layer_type:
+    if "conv" in find_type(layernum, "layer type:"):
+        act_tile_ver = int(get_act_tile_hor_var(layernum)[0])
+        return '{:07b}'.format(act_tile_ver - 1)
+    else:
         return return_value(7)
-
-    act_tile_ver = int(get_act_tile_hor_var(layernum)[0])
-    return '{:07b}'.format(act_tile_ver)
 
 '''
 获取act tile在input channel方向上有多少个stride大小的数据块
 '''
 def get_act_tile_chl(layernum):
+    # 8bit模式
     input_channel = find_count(layernum, "in_channels:")
     if input_channel != None:
         return '{:09b}'.format(int(align(input_channel, 16) / 16 - 1))
     else:
         return return_value(9)
 
+    # 16bit模式
     input_channel = find_count(layernum, "in_channels:")
     if input_channel != None:
         return '{:09b}'.format(int(align(input_channel, 8) / 8 - 1))
     else:
         return return_value(9)
+    # 4bit模式
     input_channel = find_count(layernum, "in_channels:")
     if input_channel != None:
         return '{:09b}'.format(int(align(input_channel, 16) / 16 - 1))
@@ -555,34 +549,30 @@ def get_act_subtile_hor_ver(layer_num):
 获取act tile向下游切换的ping pang新号的数据量大小，相当于input的sub_tile大小
 '''
 def get_act_tile_sub_chl(layernum):
-    layer_type = find_type(layernum, "layer type:")
-    if "pool" in layer_type or "fc" in layer_type:
-        return return_value(7)
-
-    act_subtail = get_act_subtile_hor_ver(layernum)
-
-    return '{:09b}'.format(act_subtail[0] * act_subtail[1])
+    if "conv" in find_type(layernum, "layer type:"):
+        act_subtail = get_act_subtile_hor_ver(layernum)
+        return '{:09b}'.format(act_subtail[0] * act_subtail[1])
+    else:
+        return return_value(9)
 '''
 获取sub_core处理tile的水平方向上大小
 '''
 def get_sub_tile_hor(layernum):
-    layer_type = find_type(layernum, "layer type:")
-    if "pool" in layer_type or "fc" in layer_type:
+    if "conv" in find_type(layernum, "layer type:"):
+        sub_tile_hor = get_act_subtile_hor_ver(layernum)[0]
+        return '{:07b}'.format(sub_tile_hor - 1)
+    else:
         return return_value(7)
-
-    sub_tile_hor = get_act_subtile_hor_ver(layernum)[0]
-    return '{:07b}'.format(sub_tile_hor - 1)
 
 '''
 获取sub_core处理tile的垂直方向上大小
 '''
 def get_sub_tile_ver(layernum):
-    layer_type = find_type(layernum, "layer type:")
-    if "pool" in layer_type or "fc" in layer_type:
+    if "conv" in find_type(layernum, "layer type:"):
+        sub_tile_ver = get_act_subtile_hor_ver(layernum)[1]
+        return '{:07b}'.format(sub_tile_ver - 1)
+    else:
         return return_value(7)
-
-    sub_tile_ver = get_act_subtile_hor_ver(layernum)[1]
-    return '{:07b}'.format(sub_tile_ver - 1)
 
 '''
 任务块在output channel方向上需要计算的次数
@@ -634,11 +624,27 @@ def get_in_chl_num(layernum):
     else:
         return return_value(9)
 
+'''
+sub_core计算出来的mini tile的水平方向大小
+'''
 def get_Out_mini_tile_hor(layernum):
-    pass
+    if "conv" in find_type(layernum, "layer type:"):
+        out_hor = find_count(layernum, "feature_map_size_x:")
+        mini_tile_hor = int(out_hor / nnbaton_X2 / nnbaton_Xc / nnbaton_X1)
+        return '{:07b}'.format(mini_tile_hor - 1)
+    else:
+        return return_value(7)
 
+'''
+sub_core计算出来的mini tile的垂直方向大小
+'''
 def get_Out_mini_tile_ver(layernum):
-    pass
+    if "conv" in find_type(layernum, "layer type:"):
+        out_ver = find_count(layernum, "feature_map_size_y:")
+        mini_tile_hor = int(out_ver / nnbaton_Yp / nnbaton_Y2 / nnbaton_Y1)
+        return '{:07b}'.format(mini_tile_hor - 1)
+    else:
+        return return_value(7)
 
 '''
 获取output tile的水平方向大小
@@ -647,7 +653,7 @@ def get_Out_tile_hor(layernum):
     if "conv" in find_type(layernum, "layer type:"):
         out_W = find_count(layernum, "feature_map_size_x:")
         out_tile_hor = int(out_W / nnbaton_X2)
-        return '{:07b}'.format(out_tile_hor)
+        return '{:07b}'.format(out_tile_hor - 1)
     else:
         return return_value(7)
 
@@ -658,7 +664,7 @@ def get_Out_tile_ver(layernum):
     if "conv" in find_type(layernum, "layer type:"):
         out_H = find_count(layernum, "feature_map_size_y:")
         out_tail_ver = int(out_H / nnbaton_Yp / nnbaton_Y2)
-        return '{:07b}'.format(out_tail_ver)
+        return '{:07b}'.format(out_tail_ver - 1)
     else:
         return return_value(7)
 
@@ -669,12 +675,13 @@ def get_Out_tile_chl(layernum):
     if "conv" in find_type(layernum, "layer type:"):
         out_C = find_count(layernum, "out_channels:")
         out_tile_chl = int(out_C / nnbaton_K2)
-        return '{:07b}'.format(out_tile_chl)
+        return '{:07b}'.format(out_tile_chl - 1)
     else:
         return return_value(7)
 
 '''
 获取一个output channel的weight大小
+in_channel和out_channel相等，不需要反推
 '''
 def get_weight_total_size(layernum):
     if "conv" in find_type(layernum, "layer type:"):
@@ -707,8 +714,7 @@ def get_weight_ram_output_chl_num(layernum):
 11：保留
 '''
 def get_conv_type(layernum):
-    conv_type = find_type(layernum, "layer type:")
-    if "conv" in conv_type:
+    if "conv" in find_type(layernum, "layer type:"):
         return '{:02b}'.format(0)
     else:
         return return_value(2)
@@ -723,39 +729,53 @@ def get_Chiplet_mode(layernum):
     elif nnbaton_Kp == 1:
         return '{:02b}'.format(0)
 
+'''
+获取多个chiplet协同工作时，每块input channel对应的weight存储
+等于weight_total_size/chiplet_mode
+'''
 def get_Chiplet_tile_size(layernum):
-    pass
+    if "conv" in find_type(layernum, "layer type:"):
+        output_channel = int(find_count(layernum, "out_channels:") / nnbaton_Kp / nnbaton_K2)
+        kernel_size = find_count(layernum, "kernel_size_x:") * find_count(layernum, "kernel_size_y:")
+        weight_size = kernel_size * int(align(output_channel, 8) / 8 / nnbaton_Kp)
+        return '{:017b}'.format(weight_size)
+    else:
+        return return_value(17)
 
 '''
 获取kernel宽度乘以高度的大小
+FC的kernel_size为1*1
 '''
 def get_Kernel_num(layernum):
-    kernel_width = find_count(layernum, "kernel_size_x:")
-    kernel_height = find_count(layernum, "kernel_size_y:")
-    if kernel_width == None and kernel_height == None:
-        return return_value(9)
+    if "fc" in find_type(layernum, "layer type:"):
+        kernel_num = 1
+        return '{:08b}'.format(kernel_num - 1)
     else:
+        kernel_width = find_count(layernum, "kernel_size_x:")
+        kernel_height = find_count(layernum, "kernel_size_y:")
         kernel_num = kernel_height * kernel_width
-        return '{:09b}'.format(kernel_num - 1)
+        return '{:08b}'.format(kernel_num - 1)
 
 '''
 获取kernel宽度的大小
 '''
 def get_Kernel_width(layernum):
-    kernel_width = find_count(layernum, "kernel_size_x:")
-    if kernel_width == None:
-        return return_value(4)
+    if "fc" in find_type(layernum, "layer type:"):
+        Kernel_width = 1
+        return '{:04b}'.format(Kernel_width - 1)
     else:
-        return '{:04b}'.format(kernel_width - 1)
+        Kernel_width = find_count(layernum, "kernel_size_y:")
+        return '{:04b}'.format(Kernel_width - 1)
 
 '''
 获取kernel高度的大小
 '''
 def get_Kernel_height(layernum):
-    kernel_height = find_count(layernum, "kernel_size_y:")
-    if kernel_height == None:
-        return return_value(4)
+    if "fc" in find_type(layernum, "layer type:"):
+        kernel_height = 1
+        return '{:04b}'.format(kernel_height - 1)
     else:
+        kernel_height = find_count(layernum, "kernel_size_y:")
         return '{:04b}'.format(kernel_height - 1)
 
 '''
@@ -870,14 +890,33 @@ def get_fc_mode_en(layernum):
     else:
         return return_value(1)
 
-def get_Inst_id_01(layernum):
-    pass
+############################################################################
+'''
+获取当前指令的ID
+'''
+def get_Inst_id_01():
+    return '{:02b}'.format(0b01)
 
-def get_Tile_mode(layernum):
-    pass
+'''
+获取各个sub core之间拼tile的模式
+'''
+def get_Tile_mode():
+    tile_mode = nnbaton_Xc * nnbaton_Yc
+    if tile_mode == 1:
+        return '{:02b}'.format(0b00)
+    elif tile_mode == 2:
+        return '{:02b}'.format(0b01)
+    elif tile_mode == 4:
+        return '{:02b}'.format(0b10)
+    elif tile_mode == 8:
+        return '{:02b}'.format(0b11)
 
+'''
+获取当前指令中，需要计算的tile的个数
+'''
 def get_tile_num(layernum):
-    pass
+    return '{:05b}'.format(nnbaton_X1 + nnbaton_Y1)
+
 
 def get_Padding_mode(layernum):
     pass
@@ -906,23 +945,50 @@ def get_act_chl_one_inst(layernum):
 def get_inst_invalid(layernum):
     pass
 
+'''
+获取一个sub_tile中水平方向上mini_tile的数量
+'''
 def get_mini_ver_num(layernum):
-    pass
+    return '{:07b}'.format(nnbaton_X1)
 
+'''
+获取一个sub_tile中垂直方向上mini_tile的数量
+'''
 def get_mini_hor_num(layernum):
-    pass
+    return '{:07b}'.format(nnbaton_Y1)
 
-def get_Inst_id_11(layernum):
-    pass
 
+############################################################################
+'''
+获取当前指令的ID
+'''
+def get_Inst_id_11():
+    return '{:02b}'.format(0b11)
+
+'''
+获取当前执行计算模式：
+00：卷积模式；    01：pooling模式；
+10：element wise模式；  11：scaling模式；
+'''
 def get_Run_mode(layernum):
-    pass
+    if "conv" in type:
+        return '{:02b}'.format(0b00)
+    elif "pooling" in type:
+        return '{:02b}'.format(0b01)
+    elif "element wise" in type:
+        return '{:02b}'.format(0b10)
+    elif "scaling" in type:
+        return '{:02b}'.format(0b11)
 
 def get_weight_addr(layernum):
     pass
 
 def get_weight_output_chl(layernum):
-    pass
+    if "conv" in find_type(layernum, "layer type:"):
+        output_chl = int(find_count(layernum, "out_channels:") / nnbaton_Kp / nnbaton_K2)
+        return '{:011b}'.format(output_chl - 1)
+    else:
+        return return_value(11)
 
 def get_weight_updata_n(layernum):
     pass
@@ -930,6 +996,9 @@ def get_weight_updata_n(layernum):
 def get_LLC_w_ping_pong(layernum):
     pass
 
+'''
+从存储器读取每一个tile的数据存储起始地址
+'''
 def get_act_addr(layernum):
     pass
 
@@ -956,6 +1025,7 @@ def get_Out_feature_map_ver(layernum):
 
 def get_act_addr_element(layernum):
     pass
+
 
 def get_nnbaton(layernum, pool_num):
     if layernum == 1:
@@ -996,7 +1066,7 @@ def get_layer_inst(layernum, tile_cnt):
         insts.append(insts[i-1])
 
 def get_tile_inst(tile_num, layer_num):
-    Inst_id_00 = get_Inst_id_00(layer_num)
+    Inst_id_00 = get_Inst_id_00()
     act_tile_hor = get_act_tile_hor(layer_num)
     act_tile_ver = get_act_tile_ver(layer_num)
     act_tile_chl = get_act_tile_chl(layer_num)
@@ -1036,8 +1106,8 @@ def get_tile_inst(tile_num, layer_num):
     scaling_mode = get_scaling_mode(layer_num)
     fc_mode_en = get_fc_mode_en(layer_num)
 
-    Inst_id_01 = get_Inst_id_01(layer_num)
-    Tile_mode = get_Tile_mode(layer_num)
+    Inst_id_01 = get_Inst_id_01()
+    Tile_mode = get_Tile_mode()
     tile_num = get_tile_num(layer_num)
     Padding_mode = get_Padding_mode(layer_num)
     Padding_num = get_Padding_num(layer_num)
@@ -1051,7 +1121,7 @@ def get_tile_inst(tile_num, layer_num):
     mini_ver_num = get_mini_ver_num(layer_num)
     mini_hor_num = get_mini_hor_num(layer_num)
 
-    Inst_id_11 = get_Inst_id_11(layer_num)
+    Inst_id_11 = get_Inst_id_11()
     Run_mode = get_Run_mode(layer_num)
     weight_addr = get_weight_addr(layer_num)
     weight_output_chl = get_weight_output_chl(layer_num)
@@ -1510,8 +1580,9 @@ if __name__ == '__main__':
         schedule(i+1, start, end)
 
     i = 1
+    type = ""
     inst_00 = [
-        ["Inst_id_00", get_Inst_id_00(i)],
+        ["Inst_id_00", get_Inst_id_00()],
         ["act_tile_hor", get_act_tile_hor(i)],
         ["act_tile_ver", get_act_tile_ver(i)],
         ["act_tile_chl", get_act_tile_chl(i)],
@@ -1553,8 +1624,8 @@ if __name__ == '__main__':
     ]
 
     inst_01 = [
-        ["Inst_id_01", get_Inst_id_01(i)],
-        ["Tile_mode", get_Tile_mode(i)],
+        ["Inst_id_01", get_Inst_id_01()],
+        ["Tile_mode", get_Tile_mode()],
         ["tile_num", get_tile_num(i)],
         ["Padding_mode", get_Padding_mode(i)],
         ["Padding_num", get_Padding_num(i)],
@@ -1570,7 +1641,7 @@ if __name__ == '__main__':
     ]
 
     inst_11 = [
-        ["Inst_id_11", get_Inst_id_11(i)],
+        ["Inst_id_11", get_Inst_id_11()],
         ["Run_mode", get_Run_mode(i)],
         ["weight_addr", get_weight_addr(i)],
         ["weight_output_chl", get_weight_output_chl(i)],
@@ -1588,24 +1659,30 @@ if __name__ == '__main__':
     ]
 
     insts = ["", [[], [], []]]
-    j = 0
+    j = tile_cnt = 0
     del insts[0]
-    tile_cnt = 0
 
-    #insts是所有层的inst 每个层的insts[i]均由inst_00 inst_01 inst_11组成
+    datadir = f'{outputpath}/datas/'
+    instdir = f'{outputpath}/insts/'
+    os.mkdir(instdir)
+    os.mkdir(datadir)
+    #insts是一层的inst(包含n个tile指令)insts[i]均由inst_00 inst_01 inst_11组成的tile指令
     pool_num = get_layer_num("pool")
     for i in range(1, loadpt.layer_cnts+1):
+        type = find_type(i, "layer type:")
         nnbaton_X1, nnbaton_Y1, nnbaton_K1, nnbaton_X2, nnbaton_Y2, \
         nnbaton_K2, nnbaton_Kp, nnbaton_Yp, nnbaton_Kc, nnbaton_Yc, \
         nnbaton_Xc, nnbaton_C1, nnbaton_C0, nnbaton_X0, nnbaton_Y0 \
             = get_nnbaton(i, pool_num)
         tile_cnt = nnbaton_X2 * nnbaton_Y2 * nnbaton_K2
         get_layer_inst(i, tile_cnt)
-        bin_name = f'{outputpath}/layer.{i}.inst_data.bin'
-        with open(bin_name, 'wb') as fw:
-            write_insts(fw, tile_cnt)
+        inst_name = f'{instdir}/layer.{i}.inst.bin'
+        data_name = f'{datadir}/layer.{i}.data.bin'
+        with open(inst_name, 'wb') as finst:
+            write_insts(finst, tile_cnt)
             if i not in pool_num:
-                write_datas(datas_locate[j], fw)
+                with open(data_name, 'wb') as fdata:
+                    write_datas(datas_locate[j], fdata)
                 j += 1
         insts = ["", [[], [], []]]
         del insts[0]
