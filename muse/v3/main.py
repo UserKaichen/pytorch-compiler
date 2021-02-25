@@ -241,6 +241,33 @@ def HexProcess(decimal):
         hex_num = hex(decimal & 0xFF)[-2:]
     return hex_num
 
+def pt_skip(name):
+    if "alpha" in name or "running_" in name or "num_batches" in name\
+          or "weight" in name and "bn" in name or "bias" in name:
+        return 1
+
+def relocate(layer_locate, W, outchl):
+    end = 0
+    Rearrange_locate = []
+    print(f'Rearrange_locate fc layer weight data')
+
+    for x in range(outchl): # outchannel组bn+weight
+        # 每一组outchannel的数据：bn数据+weight数据
+        bn_lcate = layer_locate[end+BUS_WIDTH*x:end+BUS_WIDTH+BUS_WIDTH*x]
+        weight_locate = layer_locate[end+BUS_WIDTH+BUS_WIDTH*x:end+W+BUS_WIDTH+BUS_WIDTH*x]
+        weight_relocate = [] # 重排weight数据
+        for i in range(int(len(weight_locate) / (4 * 4))):
+            for j in range(4 * 4):
+                if j % 2 == 0:
+                    weight_relocate.append(weight_locate[j + 4 * 4 * i])
+            for j in range(4 * 4):
+                if j % 2:
+                    weight_relocate.append(weight_locate[j + 4 * 4 * i])
+        Rearrange_locate += bn_lcate+weight_relocate
+        end += W
+
+    return Rearrange_locate
+
 def weight_addr():
     """
     description:
@@ -252,7 +279,9 @@ def weight_addr():
     """
     k = padding = 0
     fc_flag = False
-    word_address = 1
+    # word_address = 1
+    # 为啥word_address从1开始
+    word_address = 0
     weight_bn_k = []
     weight_bn_b = []
     weight_data = []
@@ -261,11 +290,6 @@ def weight_addr():
     N = C = H = W = 0
     scale = fc_cnt = 0
     global datas_locate
-
-    def pt_skip(name):
-        if "alpha" in name or "running_" in name or "num_batches" in name\
-              or "weight" in name and "bn" in name or "bias" in name:
-            return 1
 
     print("weight_addr start:", ADDRBLOCK, " bus_addr:", bus_address())
     for i in range(len(name_list)):
@@ -296,7 +320,7 @@ def weight_addr():
                 H = dim_list[0]
                 W = dim_list[1]
             for n in range(N):
-                if len(weight_bn_k) and len(weight_bn_b):
+                if len(weight_bn_k) and len(weight_bn_b): # pt中的bnkb存入layer_locate
                     hexdata_k = '%X' % st.unpack('I', st.pack('f', weight_bn_k[n]))[0]
                     hexdata_b = '%X' % st.unpack('I', st.pack('f', weight_bn_b[n]))[0]
                     for x in range(len(str(hexdata_k))):
@@ -305,54 +329,47 @@ def weight_addr():
                     for y in range(len(str(hexdata_b))):
                         if (y % 2) == 0:
                             layer_locate.append(hexdata_b[y] + hexdata_b[y+1])
+                    padding = align(len(layer_locate), BUS_WIDTH) - len(layer_locate)
+                    for i in range(padding): # bn补齐256bits
+                        layer_locate.append("00")
                 for c in range(C):
                     for h in range(H):
                         if dim_lens == 2:
-                            for i in range(4 * 2):
+                            for i in range(BUS_WIDTH):
                                 layer_locate.append("00")
                         for w in range(W):
-                            word_address = w + h*W + c*H*W + n*C*H*W
-                            word_address += padding
                             if dim_lens == 4:
+                                word_addr = w + h * W + c * H * W
                                 rounds = round(weight_data[n][c][h][w].tolist() / scale)
                             elif dim_lens == 2:
-                                for i in range(4 * 2):
-                                    layer_locate.append("00")
+                                word_addr = w + h * W
                                 rounds = round(weight_data[h][w].tolist() / scale)
                             else:
                                 print(f'Unknown weight:{name} length:{dim_lens} dim:{dim_list}')
                                 continue
                             hexdata_w = HexProcess(rounds)
                             layer_locate.append(hexdata_w)
-                word_address += BUS_WIDTH
-                padding = align(word_address, BUS_WIDTH) - word_address
-                for i in range(padding-word_address):
+                word_address += BUS_WIDTH # bn预留(256bit)
+                word_address += align(word_addr, BUS_WIDTH)
+                padding = align(len(layer_locate), BUS_WIDTH) - len(layer_locate)
+                for i in range(padding): #weight补齐256bits
                     layer_locate.append("00")
             layer_cnt = int(name.split(".", 4)[1])+1
             if "classifier" in name:
                 fc_cnt += 1
                 layer_cnt = get_layer_num(f'fc{fc_cnt}')
-            if fc_flag and len(layer_locate):
-                print(".................Start Rearrange weight..............")
-                Rearrange_locate = []
-                for i in range(int(len(layer_locate) / (4 * 4))):
-                    for j in range(4 * 4):
-                        if j % 2 == 0:
-                            Rearrange_locate.append(layer_locate[j + 4 * 4 * i])
-                    for j in range(4 * 4):
-                        if j % 2:
-                            Rearrange_locate.append(layer_locate[j + 4 * 4 * i])
-                layer_locate = Rearrange_locate
+            if fc_flag and len(layer_locate): # fc weight 16*8需要重排
+                layer_locate = relocate(layer_locate, W, H)
             print(f'layer {str(layer_cnt)} bn_k+bn_b+conv_weight data', " save data success")
             datas_locate[k] = [f'layer {str(layer_cnt)} bn_k+bn_b+conv_weight data', [layer_locate]]
+            datas_locate.append(datas_locate[k])
             weight_bn_k = weight_bn_b = weight_data = layer_locate = []
             scale = fc_flag = 0
-            datas_locate.append(datas_locate[k])
             k += 1
     ADDRBLOCK += word_address + padding
     print("weight_addr   end:", ADDRBLOCK, "bus_addr:", bus_address())
     ADDRBLOCK = align(ADDRBLOCK, BUS_WIDTH)
-    print("###########weight_addr   after align 256:", ADDRBLOCK)
+    print("########### weight_addr   after align 256:", ADDRBLOCK)
 
 def gen_txt(loadpt):
     """
@@ -1390,7 +1407,6 @@ def inout_addr(N, C, H, W, div_size, layercnt):
 
 def netinout_addr():
     N = 1
-    # C = H = W = 0
 
     #net的输入层
     C, H, W = get_fstin_CHW()
@@ -1415,12 +1431,31 @@ def otherinout_addr():
         C, H, W = get_out_CHW(i+1)
         inout_addr(N, C, H, W, div_size, i+1)
 
-def get_binsize():
-    return 100000000
+def get_binsize(file, binsize):
+    dir = "inst"
+    if "data" in file[0]:
+        dir = "data"
 
+    j = 1
+    for i in range(loadpt.layer_cnts):
+        name = f'layer.{j}.{dir}.bin'
+        path = f'{outputpath}/{dir}s/{name}'
+        if os.path.exists(path):
+            size = os.path.getsize(path)
+            binsize += size
+            print(f'{path}\'s size={size} bytes binsize:{binsize} bytes')
+        j += 1
+
+    return binsize
 def binary_addr():
+    binsize = 0
+    binsize = get_binsize(os.listdir(instdir), binsize)
+    binsize = get_binsize(os.listdir(datadir), binsize)
+    print(f'all binary size:{binsize} bytes')
     global ADDRBLOCK
-    ADDRBLOCK += get_binsize()
+    ADDRBLOCK += binsize
+    print(f'DDR ADDRBLOCK size :{ADDRBLOCK} bytes')
+    
 
 def gen_ddraddr():
     print("dram_capacity:", dram_capacity)
@@ -1429,7 +1464,6 @@ def gen_ddraddr():
     global CALCULATE
     CALCULATE = ADDRBLOCK
     otherinout_addr()
-    binary_addr()
     print("run gen_ddraddr successfully")
 
 def prints(cnt, total, msg):
@@ -1477,9 +1511,7 @@ def clean_ups(cleanlist):
                 None
     """
     for i in range(len(cleanlist)):
-        output = f'debug/{cleanlist[i]}'
-        if "data_for_fpga" in cleanlist[i]:
-            output = f'{outputpath}/{cleanlist[i]}'
+        output = cleanlist[i]
         if os.path.exists(output):
             if os.path.isdir(output):
                 shutil.rmtree(output)
@@ -1687,5 +1719,6 @@ if __name__ == '__main__':
         insts = ["", [[], [], []]]
         del insts[0]
 
+    binary_addr()
     allend = time.time()
     print('Make data successfully! It costs %.2f Seconds'%(allend - allstart))
