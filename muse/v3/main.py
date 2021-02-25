@@ -1447,6 +1447,7 @@ def get_binsize(file, binsize):
         j += 1
 
     return binsize
+
 def binary_addr():
     binsize = 0
     binsize = get_binsize(os.listdir(instdir), binsize)
@@ -1455,7 +1456,6 @@ def binary_addr():
     global ADDRBLOCK
     ADDRBLOCK += binsize
     print(f'DDR ADDRBLOCK size :{ADDRBLOCK} bytes')
-    
 
 def gen_ddraddr():
     print("dram_capacity:", dram_capacity)
@@ -1720,5 +1720,6 @@ if __name__ == '__main__':
         del insts[0]
 
     binary_addr()
+
     allend = time.time()
     print('Make data successfully! It costs %.2f Seconds'%(allend - allstart))
