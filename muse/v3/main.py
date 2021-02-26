@@ -11,6 +11,7 @@ from optparse import OptionParser
 from script.load_pt import load_pt
 
 div_size = 8
+dram_base = 0
 ADDRBLOCK = 0
 CALCULATE = 0
 name_list = []
@@ -20,7 +21,6 @@ ALIGN_WIDTH = 64
 pool_fc_outc_bac = 0
 pool_fc_outh_bac = 0
 pool_fc_outw_bac = 0
-dram_base = 0
 dram_capacity = 1 << 30
 
 datas_locate = ["", []]
@@ -253,8 +253,8 @@ def relocate(layer_locate, W, outchl):
 
     for x in range(outchl): # outchannel组bn+weight
         # 每一组outchannel的数据：bn数据+weight数据
-        bn_lcate = layer_locate[end+BUS_WIDTH*x:end+BUS_WIDTH+BUS_WIDTH*x]
-        weight_locate = layer_locate[end+BUS_WIDTH+BUS_WIDTH*x:end+W+BUS_WIDTH+BUS_WIDTH*x]
+        bn_lcate = layer_locate[end+BUS_WIDTH*x:end+(x+1)*BUS_WIDTH]
+        weight_locate = layer_locate[end+(x+1)*BUS_WIDTH:end+W+(x+1)*BUS_WIDTH]
         weight_relocate = [] # 重排weight数据
         for i in range(int(len(weight_locate) / (4 * 4))):
             for j in range(4 * 4):
@@ -267,6 +267,13 @@ def relocate(layer_locate, W, outchl):
         end += W
 
     return Rearrange_locate
+
+def add_padding(layer_locate):
+    padding = align(len(layer_locate), BUS_WIDTH) - len(layer_locate)
+    for i in range(padding): #weight补齐256bits
+        layer_locate.append("00")
+
+    return layer_locate
 
 def weight_addr():
     """
@@ -329,9 +336,7 @@ def weight_addr():
                     for y in range(len(str(hexdata_b))):
                         if (y % 2) == 0:
                             layer_locate.append(hexdata_b[y] + hexdata_b[y+1])
-                    padding = align(len(layer_locate), BUS_WIDTH) - len(layer_locate)
-                    for i in range(padding): # bn补齐256bits
-                        layer_locate.append("00")
+                    layer_locate = add_padding(layer_locate)
                 for c in range(C):
                     for h in range(H):
                         if dim_lens == 2:
@@ -351,9 +356,7 @@ def weight_addr():
                             layer_locate.append(hexdata_w)
                 word_address += BUS_WIDTH # bn预留(256bit)
                 word_address += align(word_addr, BUS_WIDTH)
-                padding = align(len(layer_locate), BUS_WIDTH) - len(layer_locate)
-                for i in range(padding): #weight补齐256bits
-                    layer_locate.append("00")
+                layer_locate = add_padding(layer_locate)
             layer_cnt = int(name.split(".", 4)[1])+1
             if "classifier" in name:
                 fc_cnt += 1
