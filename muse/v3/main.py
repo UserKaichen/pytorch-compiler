@@ -16,11 +16,11 @@ ADDRBLOCK = 0
 CALCULATE = 0
 name_list = []
 data_list = []
-BUS_WIDTH = 256
 ALIGN_WIDTH = 64
 pool_fc_outc_bac = 0
 pool_fc_outh_bac = 0
 pool_fc_outw_bac = 0
+BUS_WIDTH = int(256/8)
 dram_capacity = 1 << 30
 
 datas_locate = ["", []]
@@ -263,14 +263,14 @@ def relocate(layer_locate, W, outchl):
             for j in range(4 * 4):
                 if j % 2:
                     weight_relocate.append(weight_locate[j + 4 * 4 * i])
-        Rearrange_locate += bn_lcate+weight_relocate
+        Rearrange_locate += bn_lcate + weight_relocate
         end += W
 
     return Rearrange_locate
 
 def add_padding(layer_locate):
     padding = align(len(layer_locate), BUS_WIDTH) - len(layer_locate)
-    for i in range(padding): #weight补齐256bits
+    for i in range(padding): #data补齐256bits
         layer_locate.append("00")
 
     return layer_locate
@@ -284,10 +284,7 @@ def weight_addr():
     return code:
                 None
     """
-    k = padding = 0
     fc_flag = False
-    # word_address = 1
-    # 为啥word_address从1开始
     word_address = 0
     weight_bn_k = []
     weight_bn_b = []
@@ -295,8 +292,8 @@ def weight_addr():
     global ADDRBLOCK
     layer_locate = []
     N = C = H = W = 0
-    scale = fc_cnt = 0
     global datas_locate
+    k = scale = fc_cnt = 0
 
     print("weight_addr start:", ADDRBLOCK, " bus_addr:", bus_address())
     for i in range(len(name_list)):
@@ -363,16 +360,14 @@ def weight_addr():
                 layer_cnt = get_layer_num(f'fc{fc_cnt}')
             if fc_flag and len(layer_locate): # fc weight 16*8需要重排
                 layer_locate = relocate(layer_locate, W, H)
-            print(f'layer {str(layer_cnt)} bn_k+bn_b+conv_weight data', " save data success")
-            datas_locate[k] = [f'layer {str(layer_cnt)} bn_k+bn_b+conv_weight data', [layer_locate]]
-            datas_locate.append(datas_locate[k])
+            print(f'layer {str(layer_cnt)} bn_k+bn_b+conv_weight data save data success')
+            datas_locate[k] = [f'layer {str(layer_cnt)} data', [layer_locate]]
             weight_bn_k = weight_bn_b = weight_data = layer_locate = []
+            datas_locate.append(datas_locate[k])
             scale = fc_flag = 0
             k += 1
-    ADDRBLOCK += word_address + padding
+    ADDRBLOCK += word_address
     print("weight_addr   end:", ADDRBLOCK, "bus_addr:", bus_address())
-    ADDRBLOCK = align(ADDRBLOCK, BUS_WIDTH)
-    print("########### weight_addr   after align 256:", ADDRBLOCK)
 
 def gen_txt(loadpt):
     """
@@ -879,8 +874,8 @@ def get_pool_size(layernum):
 给平均池化使用的任意尺寸的倒数
 '''
 def get_Pooling_oprands(layernum):
-    type = find_type(layernum, "layer type:")
-    if "avgpool" in type:
+    types = find_type(layernum, "layer type:")
+    if "avgpool" in types:
         pool_size = find_count(layernum, "pool_size:")
         return '{:032b}'.format(int(st.unpack('I', st.pack('f', 1 / (pool_size * pool_size)))[0]))
     else:
@@ -991,13 +986,13 @@ def get_Inst_id_11():
 10：element wise模式；  11：scaling模式；
 '''
 def get_Run_mode(layernum):
-    if "conv" in type:
+    if "conv" in types:
         return '{:02b}'.format(0b00)
-    elif "pooling" in type:
+    elif "pooling" in types:
         return '{:02b}'.format(0b01)
-    elif "element wise" in type:
+    elif "element wise" in types:
         return '{:02b}'.format(0b10)
-    elif "scaling" in type:
+    elif "scaling" in types:
         return '{:02b}'.format(0b11)
 
 def get_weight_addr(layernum):
@@ -1290,8 +1285,7 @@ def write_datas(data_locate, fw):
             continue
         for j in range(len(data_locate[i])):
             for k in range(len(data_locate[i][j])):
-                for l in range(len(data_locate[i][j][k])):
-                    ints = shex_to_int(data_locate[i][j][k][l])
+                    ints = int(data_locate[i][j][k], 16)
                     fw.write(st.pack('B', ints))
 
 def get_fstin_CHW():
@@ -1615,7 +1609,7 @@ if __name__ == '__main__':
         schedule(i+1, start, end)
 
     i = 1
-    type = ""
+    types = ""
     inst_00 = [
         ["Inst_id_00", get_Inst_id_00()],
         ["act_tile_hor", get_act_tile_hor(i)],
@@ -1694,6 +1688,7 @@ if __name__ == '__main__':
     ]
 
     insts = ["", [[], [], []]]
+    #insts是一层的inst(包含n个tile指令)insts[i]均由inst_00 inst_01 inst_11组成的tile指令
     j = tile_cnt = 0
     del insts[0]
 
@@ -1701,10 +1696,9 @@ if __name__ == '__main__':
     instdir = f'{outputpath}/insts/'
     os.mkdir(instdir)
     os.mkdir(datadir)
-    #insts是一层的inst(包含n个tile指令)insts[i]均由inst_00 inst_01 inst_11组成的tile指令
     pool_num = get_layer_num("pool")
     for i in range(1, loadpt.layer_cnts+1):
-        type = find_type(i, "layer type:")
+        types = find_type(i, "layer type:")
         nnbaton_X1, nnbaton_Y1, nnbaton_K1, nnbaton_X2, nnbaton_Y2, \
         nnbaton_K2, nnbaton_Kp, nnbaton_Yp, nnbaton_Kc, nnbaton_Yc, \
         nnbaton_Xc, nnbaton_C1, nnbaton_C0, nnbaton_X0, nnbaton_Y0 \
