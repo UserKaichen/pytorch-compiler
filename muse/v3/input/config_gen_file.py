@@ -2168,28 +2168,32 @@ def min_num(a, b) :
 ##################################
 ############## main ##############
 ##################################
-opt = option_parse()
-dname = opt.dir_name 
-tname  = opt.test_name
-dlist  = []
-tlist  = []
-print("now inside " + dname + ":" + tname)
-isdone = deal_one_task(dname+"/", tname, opt.muse_flag, opt.rtl_flag, opt.fpga_flag, opt.muse_dir, opt.rtl_dir)
-if (isdone) :
-    dlist.append(dname+"/")
-    tlist.append(tname)
-for foldername, subfolders, filenames in os.walk(dname):
-    for subfolder in subfolders:
-        d_name = foldername + "/" + subfolder + "/"
-        t_name = subfolder
-        print("now inside " + foldername + ":" + subfolder)
-        isdone = deal_one_task(d_name, t_name, opt.muse_flag, opt.rtl_flag, opt.fpga_flag, opt.muse_dir, opt.rtl_dir)
-        if (isdone) :
-            dlist.append(d_name)
-            tlist.append(t_name)
-if (opt.muse_flag) :
-    gen_regression_file(opt.muse_dir, tname, tlist, 0, "")
-if (opt.rtl_flag) :
-    gen_regression_file(opt.rtl_dir, tname, tlist, 1, dlist)
+if __name__ == '__main__':
+    opt = option_parse()
+    dname = opt.dir_name
+    tname = opt.test_name
+    dlist = []
+    tlist = []
+    print("now inside " + dname + ":" + tname)
+    isdone = deal_one_task(dname + "/", tname, opt.muse_flag, opt.rtl_flag, opt.fpga_flag, opt.muse_dir, opt.rtl_dir)
+    if (isdone):
+        dlist.append(dname + "/")
+        tlist.append(tname)
+    for foldername, subfolders, filenames in os.walk(dname):
+        for subfolder in subfolders:
+            d_name = foldername + "/" + subfolder + "/"
+            t_name = subfolder
+            print("now inside " + foldername + ":" + subfolder)
+            isdone = deal_one_task(d_name, t_name, opt.muse_flag, opt.rtl_flag, opt.fpga_flag, opt.muse_dir,
+                                   opt.rtl_dir)
+            if (isdone):
+                dlist.append(d_name)
+                tlist.append(t_name)
+    if (opt.muse_flag):
+        gen_regression_file(opt.muse_dir, tname, tlist, 0, "")
+    if (opt.rtl_flag):
+        gen_regression_file(opt.rtl_dir, tname, tlist, 1, dlist)
+
+
 
 

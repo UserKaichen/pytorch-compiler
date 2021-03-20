@@ -4,23 +4,28 @@ import math
 import torch
 import threading
 import struct as st
+from script.run_steps import prints
 
 class load_pt():
-    def __init__(self, ptpath, confpath, ptdtpath):
+    def __init__(self, fmain, conf, ptdt, net, pt, log):
         self.in_q = "5"
+        self.fw = fmain
         self.padding = ""
         self.layermsg = ""
-        self.layer_cnts = 0
+        self.ptpath = pt
+        self.netpath = net
+        self.logpath = log
+        self.confpath = conf
+        self.ptdtpath = ptdt
         self.in_feature_h = 0
         self.in_feature_w = 0
         self.layers = [["", ""]]
         self.in_channels_bf = ""
         self.out_channels_bf = ""
+        self.layer_cnts = self.get_cnts(log)
 
-        self.confpath = confpath
-        self.ptdtpath = ptdtpath
         if not os.path.exists(self.confpath):
-            os.mkdir(self.confpath)
+            os.system(f'mkdir -p {self.confpath}')
 
     def get_layer_info(self, path, flag):
         """
@@ -38,7 +43,7 @@ class load_pt():
 
         if int(str(find_flg).split(":", 1)[1]) == 0:
             print("please do not send layer_num:0")
-            exit(0)
+            return 1
 
         next_flg = f'layer_num:{int(str(find_flg).split(":", 1)[1]) + 1}'
         with open(path, 'r') as file_read:
@@ -105,7 +110,7 @@ class load_pt():
                         fw.write(str(conver[i]))
                     fw.write('\n')
 
-        print("%s write data success" % path)
+        self.fw.write(f'{path} write data success\n')
 
     def write_to_file(self, fw, config):
         """
@@ -416,9 +421,9 @@ class load_pt():
                 self.write_pool_config(fw)
             else:
                 print("Unknown layer type...", layer_type)
-                return
+                return 1
 
-        print("%s write config success" % path)
+        self.fw.write(f'{path} write config success\n')
 
     def deal_out_in_q(self, quant_list, data):
         """
@@ -507,14 +512,88 @@ class load_pt():
                     self.in_feature_w = line_split[3].strip()
                     break
 
+    def get_cnts(self, log):
+        """
+        description: Get counts of layers
+        parameter: NULL
+        return value: NULL
+        """
+        layer_cnts = 0
 
-if __name__ == '__main__':
-    """
-    description:
-                main function
-    parameters:
-                None
-    return code: 
-                None
-    """
-    pass
+        with open(log, 'r') as f:
+            for lines in f.readlines():
+                if "layer_num:" in lines:
+                    layer_cnts += 1
+
+        return layer_cnts
+
+    def gen_txt(self):
+        """
+        description:
+                    Load pt file and format output
+        parameters:
+                    loadpt: The Class of load_pt
+        return code:
+                    None
+        """
+        counts = 0
+        name_list = []
+        data_list = []
+        quant_list = []
+        onelayer_cnt = []
+
+        self.get_tensorinfo(self.netpath)
+
+        with open(f'{self.ptdtpath}/img.input.q.txt', 'w') as fq:
+            fq.write('{}{}'.format(self.in_q, '\n'))
+        self.fw.write(f'{self.ptdtpath}/img.input.q.txt write success\n')
+
+        with open(self.ptpath, 'rb') as f:
+            buffer = io.BytesIO(f.read())
+            dict = torch.load(buffer, map_location=torch.device('cpu'))
+            for k, v in dict.items():
+                if "quant_" in k or "classifier." in k:
+                    quant_list.append(k)
+                    quant_list.append(v)
+                name_list.append(k)
+                data_list.append(v)
+
+        for i in range(self.layer_cnts):
+            layer = f'layers.{i}.'
+            for j in range(len(name_list)):
+                if layer in name_list[j]:
+                    self.layers.append([name_list[j], data_list[j]])
+                    counts += 1
+            onelayer_cnt.append(str(counts))
+            counts = 0
+
+        del (self.layers[0])
+        for i in range(self.layer_cnts):
+            layername = f'layer_num:{str(i + 1)}'
+            self.layermsg = self.get_layer_info(self.logpath, layername)
+            self.splicing_output(int(onelayer_cnt[i]), counts, quant_list)
+            counts += int(onelayer_cnt[i])
+
+        scale = fcname = weight = ""
+        for i in range(len(quant_list)):
+            tmpstr = str(quant_list[i])
+            if ".scale" in tmpstr or ".weight" in tmpstr:
+                if ".scale" in tmpstr:
+                    scale = quant_list[i + 1]
+                else:
+                    fcname = quant_list[i]
+                    weight = quant_list[i + 1]
+                if len(fcname) and len(str(scale)) and len(str(weight)):
+                    write_data = threading.Thread(target=self.write_pt_data,
+                                                  args=(fcname, weight, scale))
+                    write_data.start()
+                    write_data.join()
+                    continue
+            elif "quant_" in tmpstr or "classifier" in tmpstr:
+                write_data = threading.Thread(target=self.write_pt_data,
+                                              args=(quant_list[i], quant_list[i + 1], scale))
+                write_data.start()
+                write_data.join()
+
+        prints("run gen_txt successfully")
+        return name_list, data_list
