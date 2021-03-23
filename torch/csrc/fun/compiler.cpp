@@ -850,7 +850,9 @@ class Compiler {
       }
 
       else if (is_module(node, "__torch__.BasicBlock") ||
-               is_module(node, "__torch__.torchvision.models.resnet.BasicBlock")) {
+               is_module(node, "__torch__.Bottleneck") ||
+               is_module(node, "__torch__.torchvision.models.resnet.BasicBlock") ||
+               is_module(node, "__torch__.torchvision.models.resnet.Bottleneck")) {
         BasicBlock_cnt++;
         BasicBlock_flag = true;
         BasicBlock_node(node->outputs()[0]);
