@@ -632,7 +632,7 @@ class Compiler {
 
     string layer_bf = "";
     if (layer_num-1) {
-      layer_bf = "    form layer_num:" + to_string(layer_num_bf) + " type:" + layer_type_bf;
+      layer_bf = " form layer_num:" + to_string(layer_num_bf) + " type:" + layer_type_bf;
     }
 
     auto total_workload_out_shape = shape(node->output());
@@ -647,7 +647,11 @@ class Compiler {
     if (!BasicBlock_flag)
       const std::string& convname = node->inputs()[0]->node()->s(attr::name);
 
-    std::cout << "layer_num:" << layer_num << " layer type:" << "conv" << num[0] << layer_bf << "\n";
+    std::string byps = "";
+    if (downsample_flag == 1)
+        byps = " in downsample";
+
+    std::cout << "layer_num:" << layer_num << " layer type:" << "conv" << num[0] << byps << layer_bf << "\n";
     std::cout << convname << " param:\nin_channels:" << param_conv.in_channels
               << " out_channels:" << param_conv.out_channels << " kernel_size_x:"
               << param_conv.kernel_size_x << " kernel_size_y:" << param_conv.kernel_size_y
@@ -903,14 +907,14 @@ class Compiler {
         layer_num++;
         node_back  = node;
         string layer_bf = "";
-        layer_type = "AdaptAvgPool" + to_string(num[3]);
+        layer_type = "AdaptAvgpool" + to_string(num[3]);
         if (layer_num-1) {
           layer_bf = "    form layer_num:" + to_string(layer_num_bf) + " type:" + layer_type_bf;
         }
         auto param = parseAdapt(node);
         const std::string& poolname = layer_type;
         std::cout << "layer_num:" << layer_num << " layer type:" << layer_type  << layer_bf << "\n";
-        std::cout << poolname << " param: output_size_x " << param.output_size_x << " output_size_y:"
+        std::cout << poolname << " param: kernel_size_x:" << param.output_size_x << " kernel_size_y:"
                   << param.output_size_y << std::endl;
         layer_num_bf  = layer_num;
         layer_type_bf = layer_type;
