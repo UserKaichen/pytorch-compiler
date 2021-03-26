@@ -914,7 +914,7 @@ class Compiler {
         auto param = parseAdapt(node);
         const std::string& poolname = layer_type;
         std::cout << "layer_num:" << layer_num << " layer type:" << layer_type  << layer_bf << "\n";
-        std::cout << poolname << " param: kernel_size_x:" << param.output_size_x << " kernel_size_y:"
+        std::cout << poolname << " param: output_size_x:" << param.output_size_x << " output_size_y:"
                   << param.output_size_y << std::endl;
         layer_num_bf  = layer_num;
         layer_type_bf = layer_type;
