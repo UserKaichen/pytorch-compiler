@@ -51,6 +51,7 @@ struct Conv2dParameter {
   int kernel_size_y;
   int feature_map_size_x;
   int feature_map_size_y;
+  int padding_num;
 };
 
 struct BatchNormParameter {
@@ -89,6 +90,7 @@ struct Pool2dParameter {
   int stride_y;
   int kernel_size_x;
   int kernel_size_y;
+  int padding_num;
 };
 
 struct NNKnifeResult {
@@ -283,6 +285,9 @@ class Compiler {
 
     param.transposed = _convolution_node->inputs()[6]->node()->i(attr::value);
 
+    auto padding = _convolution_node->inputs()[4]->node()->inputs();
+    param.padding_num = padding[0]->node()->i(attr::value);
+
     return param;
   }
 
@@ -354,6 +359,9 @@ class Compiler {
     auto stride_list = pool2d_node->inputs()[2]->node()->inputs();
     param.stride_x = stride_list[0]->node()->i(attr::value);
     param.stride_y = stride_list[1]->node()->i(attr::value);
+
+    auto padding = pool2d_node->inputs()[3]->node()->inputs();
+    param.padding_num = padding[0]->node()->i(attr::value);
 
     return param;
   }
@@ -659,7 +667,8 @@ class Compiler {
               << " dilation_x:"<< param_conv.dilation_x << " dilation_y:"
               << param_conv.dilation_y << " transposed:" << param_conv.transposed 
               << " feature_map_size_x:" << param_conv.feature_map_size_x 
-              << " feature_map_size_y:" << param_conv.feature_map_size_y << std::endl;
+              << " feature_map_size_y:" << param_conv.feature_map_size_y
+              << " padding_num:" << param_conv.padding_num << std::endl;
 
     auto total_workload_in_shape = shape(node->inputs()[1]);
     auto total_workload_in = Workload{total_workload_in_shape[1],
@@ -847,7 +856,8 @@ class Compiler {
         std::cout << "layer_num:" << layer_num << " layer type:" << layer_type  << layer_bf << "\n";
         std::cout << poolname << " param: pool_size:" << size - 1 << " kernel_size_x:" << param.kernel_size_x
                   << " kernel_size_y:" << param.kernel_size_y << " Pooling_en:1" << " oprands:" << 1.0 / size 
-                  << " stride_x:" << param.stride_x << " stride_y:" << param.stride_y << std::endl;
+                  << " stride_x:" << param.stride_x << " stride_y:" << param.stride_y
+                  << " padding_num:" << param.padding_num << std::endl;
         layer_num_bf  = layer_num;
         layer_type_bf = layer_type;
         return;
