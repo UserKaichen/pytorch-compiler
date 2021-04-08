@@ -917,7 +917,7 @@ class Compiler {
         layer_num++;
         node_back  = node;
         string layer_bf = "";
-        layer_type = "AdaptAvgpool" + to_string(num[3]);
+        layer_type = "AdaptAvgPool" + to_string(num[3]);
         if (layer_num-1) {
           layer_bf = "    form layer_num:" + to_string(layer_num_bf) + " type:" + layer_type_bf;
         }
