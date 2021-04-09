@@ -1083,8 +1083,13 @@ def get_act_addr(layer_num, tile_num, act_start):
     else:
         return '{:032b}'.format(act_start)
 
-def get_weight_addr(layer_num):
-    return return_value(32)
+def get_weight_addr(layer_num, wet_start):
+    layer_type = find_type(layer_num, "layer type:")
+    if "conv" in layer_type:
+        weight_addr = wet_start
+        return '{:032b}'.format(weight_addr)
+    else:
+        return return_value(32)
 
 def get_Run_mode(layer_num):
     return return_value(2)
@@ -1370,7 +1375,7 @@ def get_tile_inst(layer_num, tile_num, act_start, out_start, wet_start, wet_end)
     LLC_w_ping_pong = get_LLC_w_ping_pong(layer_num)
     weight_updata_n = get_weight_updata_n(layer_num)
     weight_output_chl = get_weight_output_chl(layer_num)
-    weight_addr = get_weight_addr(layer_num)
+    weight_addr = get_weight_addr(layer_num, wet_start)
     Run_mode = get_Run_mode(layer_num)
     Inst_id_11 = get_Inst_id_11()
 

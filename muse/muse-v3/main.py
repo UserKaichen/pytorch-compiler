@@ -70,9 +70,9 @@ if __name__ == '__main__':
 
     substep = 'linux'
     if sys.platform == 'linux':
-        substep = os.system(f'python3 {netpath} >{logpath} 2>/dev/null')
+        substep = "os.system(f'python3 {netpath} >{logpath} 2>/dev/null')"
     elif sys.platform == 'win32':
-        substep = os.system(f'copy imagenet\\{logname} {debug}')
+        substep = "os.system(f'copy imagenet\\{logname} {debug}')"
     else:
         print(f'{sys.platform} muse-v3 toolchains not adapted. Stay tuned')
         sys.exit(0)
@@ -80,7 +80,7 @@ if __name__ == '__main__':
     run_step1 = [
     ["Clean the necessary files...", "clean_ups(cleanlist, os.getcwd(), wr_flag, info, debug)"],
     ["Check the necessary files...", "checkfile(fileslist)"],
-    ["Run the network model file...", f'{substep}',
+    ["Run the network model file...", substep,
     f'prints(\'run {netpath} successfully\')'],
     ["Load pt file and format output...", "os.mkdir(outputpath)",
      "loadpt = load_pt(fmain, confpath, ptdtpath, netpath, ptpath, logpath)",
