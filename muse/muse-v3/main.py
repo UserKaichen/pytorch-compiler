@@ -37,54 +37,66 @@ if __name__ == '__main__':
     bmpdtpath = parase.bmpdata_dir
     outputpath = parase.output_dir
 
-    debug = f'{os.getcwd()}/.debug/'
+    debug = ".debug"
     logpath = f'{debug}/{logname}'
     mainlog = f'{debug}/main.log'
     info = f'{os.getcwd()}/.info'
+    laycnts = chipid = 0
+    actbit = wetbit = 0
+    pool = []
 
     fileslist = ["config_gen_file.py", "inout_print.py", "quant_layer.py", "quantop.py",
                  "im6.bmp", ptpath, netpath]
-    cleanlist = ["data_for_fpga",      "imagenet",        logname,          outputpath,
-                  confpath, ptdtpath]
+    cleanlist = ["imagenet",     logname,     outputpath,     confpath,     ptdtpath]
 
-    if len(sys.argv) < 2 or sys.argv[1] != "clean":
+    if len(sys.argv) < 2 or sys.argv[1] != 'clean':
         wr_flag = True
     if len(sys.argv) == 2:
-        if sys.argv[1] == "clean":
+        if sys.argv[1] == 'clean':
             wr_flag = False
             clean_ups(cleanlist, os.getcwd(), wr_flag, info, debug)
             if os.path.exists(info):
                 os.remove(info)
             exit(0)
-        elif sys.argv[1] == "debug":
+        elif sys.argv[1] == 'debug':
             netpath = run_debug(os.getcwd())
             logpath = f'{debug}/simulator.log'
         else:
             print(f'Unknown {sys.argv[1]} in toolchains.')
 
     if os.path.exists(debug):
-        os.system(f'rm -rf {debug}')
+        shutil.rmtree(debug)
     os.mkdir(debug)
+
+    substep = 'linux'
+    if sys.platform == 'linux':
+        substep = os.system(f'python3 {netpath} >{logpath} 2>/dev/null')
+    elif sys.platform == 'win32':
+        substep = os.system(f'copy imagenet\\{logname} {debug}')
+    else:
+        print(f'{sys.platform} muse-v3 toolchains not adapted. Stay tuned')
+        sys.exit(0)
 
     run_step1 = [
     ["Clean the necessary files...", "clean_ups(cleanlist, os.getcwd(), wr_flag, info, debug)"],
     ["Check the necessary files...", "checkfile(fileslist)"],
-    ["Run the network model file...", f'os.system(\'python3 {netpath} > {logpath}\')',
+    ["Run the network model file...", f'{substep}',
     f'prints(\'run {netpath} successfully\')'],
-    ["Load pt file and format output...", "os.system(f'mkdir -p {outputpath}')",
+    ["Load pt file and format output...", "os.mkdir(outputpath)",
      "loadpt = load_pt(fmain, confpath, ptdtpath, netpath, ptpath, logpath)",
     f'loadpt.net_name = \'{logname.split(".")[0]}\'', 
-     "name_list, data_list, actbit, wetbit = loadpt.gen_txt()"],
+    f'laycnts = loadpt.layer_cnts',
+     "name_list, data_list, actbit, wetbit, chipid = loadpt.gen_txt()"],
     ["Generate input and output from bmp...",
      "send_genfilevar(ptpath, logpath, netpath, bmpdtpath, confpath, fmain, ptdtpath, outputpath)",
-    f'gen_bmp(\'{logpath}\')'],
-    ["gen_address for DRAM...", "send_calcuaddrvar(fmain, logpath, netpath, loadpt.layer_cnts)",
+    f'gen_bmp(laycnts, \'{logpath}\')'],
+    ["gen_address for DRAM...", "send_calcuaddrvar(fmain, logpath, netpath, laycnts, chipid)",
     "layers_act_addr,layers_wet_addr,datas_locate,pool,downs=gen_ddraddr(name_list,data_list,actbit,wetbit)"],
     ]
     run_step2 = [
     ["calculate the size of all bin files...", "binary_addr(instdir, datadir, outputpath)"],
     ["generate input and output bin...",
-    f'{mkbin}(outputpath, bmpdtpath, netpath, pool, downs, name_list, data_list)',
+    f'{mkbin}(inoudir, bmpdtpath, netpath, pool, downs, name_list, data_list)',
     f'prints(\'run gen_inout_bin successfully\')']]
 
     step_cnt = len(run_step1) + len(run_step2) + 1
@@ -98,28 +110,27 @@ if __name__ == '__main__':
             outputs(i + 1, step_cnt, run_step1[i][0])
             for j in range(1, len(run_step1[i])):
                 s = run_step1[i][j]
-                r = compile(s, "<string>", "exec")
-                exec(r)
+                exec(compile(s, '<string>', 'exec'))
             end = time.time()
             schedule(i + 1, start, end)
 
         start = time.time()
 
-        send_inoutbinvar(fmain, loadpt.layer_cnts)
+        send_inoutbinvar(fmain, laycnts)
         insts = ["", [[], [], []]]
         j = tile_cnt = 0
         del insts[0]
         types = ""
 
-        inst_00 = ["inst_00", 39]
-        inst_01 = ["inst_01", 14]
-        inst_11 = ["inst_11", 15]
+        inst_00 = ['inst_00', 39]
+        inst_01 = ['inst_01', 14]
+        inst_11 = ['inst_11', 15]
         insts = [inst_00, inst_01, inst_11]
 
         for i in range(len(insts)):
             for k in range(insts[i][1]):
-                fuzhi = f'{insts[i][0]}.append(["", pass_fun()])'
-                r = compile(fuzhi, "<string>", "exec")
+                assign = f'{insts[i][0]}.append(["", pass_fun()])'
+                r = compile(assign, '<string>', 'exec')
                 exec(r)
 
         inst_00 = inst_00[2:]
@@ -128,37 +139,45 @@ if __name__ == '__main__':
 
         datadir = f'{outputpath}/datas/'
         instdir = f'{outputpath}/insts/'
-        os.mkdir(instdir)
-        os.mkdir(datadir)
-        outputs(len(run_step1) + 1, step_cnt, "generate inst and data bin...")
+        confdir = f'{outputpath}/confs/'
+        inoudir = f'{outputpath}/inout/'
 
-        send_instsbit(actbit, wetbit, netpath)
-        act_addr = get_layer_input_addr(layers_act_addr, loadpt.layer_cnts)
+        outname = [datadir, instdir, confdir, inoudir]
+        for i in range(len(outname)):
+            os.mkdir(outname[i])
+
+        outputs(len(run_step1) + 1, step_cnt, "generate inst and data bin...")
+        act_addr = get_layer_input_addr(layers_act_addr, laycnts)
         out_addr = get_layer_outpu_addr(layers_act_addr)
-        for i in range(1, loadpt.layer_cnts + 1):
-            nnbaton_X1, nnbaton_Y1, nnbaton_K1, nnbaton_X2, nnbaton_Y2, \
-            nnbaton_K2, nnbaton_Kp, nnbaton_Yp, nnbaton_Kc, nnbaton_Yc, \
-            nnbaton_Xc, nnbaton_C1, nnbaton_C0, nnbaton_X0, nnbaton_Y0, \
-            nnbaton_divcase = get_nnbaton(i)
-            refresh_nnbaton(nnbaton_X1, nnbaton_Y1, nnbaton_K1, nnbaton_X2,
-                            nnbaton_Y2, nnbaton_K2, nnbaton_Kp, nnbaton_Yp,
-                            nnbaton_Kc, nnbaton_Yc, nnbaton_Xc, nnbaton_C1,
-                            nnbaton_C0, nnbaton_X0, nnbaton_Y0, nnbaton_divcase)
-            tile_cnt = (nnbaton_Kp * nnbaton_Yp) * (nnbaton_K2 * nnbaton_Y2 * nnbaton_X2)
+        num_type = get_layernum_to_type(logpath)
+        send_instsbit(actbit, wetbit, netpath)
+        nnbatons = get_nnbaton(num_type)
+        netname = logname.split('.')[0]
+        act_addr.insert(0, [])
+        out_addr.insert(0, [])
+
+        for i in range(1, laycnts + 1):
+            baton = nnbatons[i-1]
+            refresh_nnbaton(baton)
+            tile_cnt = (baton[3] * baton[4] * baton[5]) * (baton[6] * baton[7])
             if i not in pool:
                 wet_addr = get_layer_addr(i, layers_wet_addr)
-                insts = get_layer_inst(insts, i, tile_cnt, act_addr[i-1][0], out_addr[i-1][0], wet_addr)
+                insts = get_layer_inst(insts, i, tile_cnt, act_addr[i][0], out_addr[i][0], wet_addr)
             else:
-                insts = get_layer_inst(insts, i, tile_cnt, act_addr[i-1][0], out_addr[i-1][0], [])
-            inst_name = f'{instdir}/layer.{i-1}.inst.bin'
-            data_name = f'{datadir}/layer.{i-1}.data.bin'
+                insts = get_layer_inst(insts, i, tile_cnt, act_addr[i][0], out_addr[i][0], [])
+            inst_name = f'{instdir}/layer{i}_inst.bin'
+            data_name = f'{datadir}/layer{i}_data.bin'
+            conf_name = f'{confdir}/config_{i}.txt'
             with open(inst_name, 'wb') as finst:
-                write_insts(finst, tile_cnt, insts)
+                write_inst(finst, tile_cnt, insts, wetbit)
                 if i not in pool:
-                    with open(data_name, 'wb') as fw:
-                        write_datas(datas_locate[j], fw)
+                    with open(data_name, 'wb') as fdata:
+                        write_data(datas_locate[j], fdata)
                     j += 1
-            fmain.write("write layer%-2s datas and insts successfully\n" % i)
+            with open(conf_name, 'w') as fconf:
+                lenread = int(os.path.getsize(inst_name)/BUS_WIDTH)
+                write_conf(num_type[i], actbit, wetbit, chipid, tile_cnt, fconf, netname, lenread)
+            fmain.write("write layer%-2s datas, insts and confs successfully\n" % i)
             insts = ["", [[], [], []]]
             del insts[0]
 
@@ -170,8 +189,7 @@ if __name__ == '__main__':
             outputs(len(run_step1) + 1 + i + 1, step_cnt, run_step2[i][0])
             for j in range(1, len(run_step2[i])):
                 s = run_step2[i][j]
-                r = compile(s, "<string>", "exec")
-                exec(r)
+                exec(compile(s, '<string>', 'exec'))
             end = time.time()
             schedule(len(run_step1) + 1 + i + 1, start, end)
 

@@ -25,7 +25,8 @@ class load_pt():
         self.layer_cnts = self.get_cnts(log)
 
         if "resnet" not in self.netpath.lower():
-                os.system(f'mkdir -p {self.confpath}  {self.ptdtpath}')
+                os.mkdir(self.confpath)
+                os.mkdir(self.ptdtpath)
 
     def get_layer_info(self, path, flag):
         """
@@ -412,7 +413,7 @@ class load_pt():
                 self.write_pool_config(fw)
             elif "fc" in layer_type:
                 self.write_fc_config(fw, quant_list)
-            elif "AdaptAvgpool" in layer_type:
+            elif "AdaptAvgPool" in layer_type:
                 self.write_pool_config(fw)
             else:
                 print("Unknown layer type...", layer_type)
@@ -540,11 +541,12 @@ class load_pt():
         self.get_tensorinfo(self.netpath)
         with open(self.ptpath, 'rb') as f:
             ptdata = torch.load(self.ptpath, map_location=torch.device('cpu'))
-            if "resnet34" in self.netpath.lower():
+            chip_id = 0
+            if "vggnet16" in self.logpath or "resnet34" in self.logpath:
                 act_bit = ptdata['hyper_parameters']['act_quant_bit']
                 wet_bit = ptdata['hyper_parameters']['weight_quant_bit']
             else:
-                act_bit = 16
+                act_bit = 8
                 wet_bit = 8
             for k, v in ptdata['state_dict'].items():
                 k = k.split(".", 1)[1].strip()
@@ -556,7 +558,7 @@ class load_pt():
                         quant_list.append(v)
 
         if "resnet" in self.netpath.lower():
-            return name_list, data_list, act_bit, wet_bit
+            return name_list, data_list, act_bit, wet_bit, chip_id
         else:
             with open(f'{self.ptdtpath}/img.input.q.txt', 'w') as fq:
                 fq.write('{}{}'.format(self.in_q, '\n'))
@@ -600,4 +602,4 @@ class load_pt():
                 write_data.join()
 
         prints("run gen_txt successfully")
-        return name_list, data_list, act_bit, wet_bit
+        return name_list, data_list, act_bit, wet_bit, chip_id

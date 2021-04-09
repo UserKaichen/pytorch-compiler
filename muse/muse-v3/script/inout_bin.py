@@ -4,11 +4,11 @@ import sys
 import math
 import threading
 from input.config_gen_file import *
+from script.run_steps import adwrap
 from script.calcu_addr import get_fstin_CHW, get_out_CHW
 
 fmain = 0
 layer_cnts = 0
-BUS_WIDTH = int(256 / 8)
 
 def send_inoutbinvar(fw, cnt):
     global fmain
@@ -21,7 +21,7 @@ def write_inout_bin(txtfile, binfile, H, W, C, in_q):
     gen_act_file(txtfile, "", binfile, H, W, C, in_q, 1, 0, 0, 1)
     fmain.write(f'{binfile} generate success\n')
 
-def gen_inout_bin_vgg(output, bmpdt, net, pool_num, downsample, name_list, data_list):
+def gen_inout_bin_vgg(bindir, bmpdt, net, pool_num, downsample, name_list, data_list):
     fc_output = []
     fc_inputs = []
     alphalist = []
@@ -46,9 +46,6 @@ def gen_inout_bin_vgg(output, bmpdt, net, pool_num, downsample, name_list, data_
     conv_inputs.sort(key=lambda x: int(re.match('\D+(\d+)\.conv.input.6.txt', x).group(1)))
     conv_output.sort(key=lambda x: int(re.match('\D+(\d+)\.quant.output.6.txt', x).group(1)))
 
-    bindir = f'{output}/inout'
-    os.mkdir(bindir)
-
     for i in range(len(name_list)):
         name = name_list[i]
         if ".alpha" in name:
@@ -72,8 +69,8 @@ def gen_inout_bin_vgg(output, bmpdt, net, pool_num, downsample, name_list, data_
         out_q = bit - math.ceil(math.log2(0.5 * alphalist[j]))
         input_txt = f'{bmpdt}/{conv_inputs[j]}'
         output_txt = f'{bmpdt}/{conv_output[j]}'
-        input_bin = f'{bindir}/layer{i-1}_input_act0_file.bin'
-        output_bin = f'{bindir}/layer{i-1}_output_file.bin'
+        input_bin = f'{bindir}/layer{i}_input_act0_file.bin'
+        output_bin = f'{bindir}/layer{i}_output_file.bin'
         write_in = threading.Thread(target=write_inout_bin,
                                     args=(input_txt, input_bin, H_in, W_in, C_in, in_q))
         write_in.start()
@@ -120,6 +117,8 @@ def find_layer_quant(type, netpath, netname):
             findobj = "class Bottleneck(_Bottleneck):"
     elif "layer" in type:
         findobj = "class ResNet(_ResNet):"
+    elif "block" in type:
+        findobj = f'def {netname}(pretrained=False, progress=True, **kwargs):'
 
     with open(netpath, 'r') as fd:
         for line in fd:
@@ -130,7 +129,11 @@ def find_layer_quant(type, netpath, netname):
                         findstr = f'self.quant{i} = QuantLayer()'
                     elif "layer" in type:
                         findstr = f'x = self.layer{i}(x)'
+                    elif "block" in type:
+                        findstr = f"return _resnet('{netname}'"
                     if line.startswith(findstr):
+                        if "block" in type:
+                            return line.split('[',1)[1].split(']',1)[0]
                         get_max = line
                         i += 1
                     if "class" in line:
@@ -138,10 +141,10 @@ def find_layer_quant(type, netpath, netname):
 
     return re.findall(r"\d+\.?\d*", get_max)
 
-def getblock_max(max, cnt, name):
+def getblock_max(cnt, name):
     if cnt == 0:
         return 0
-    from script.run_steps import get_model_name
+
     model = ""
     block_max = 0
     blockname = "BasicBlock"
@@ -169,35 +172,36 @@ def getblock_max(max, cnt, name):
                     if f"): {blockname}(" in line:
                         block_max = line.split(')')[0].split('(')[1]
                     elif line.startswith(f'(layer{cnt+1}): Sequential(') or "quant_fc" in line:
-                        return int(block_max)
+                        return int(block_max)+1
 
 def getresnet_max(path, name):
     layermax = find_layer_quant("layer", path, name)
     quantmax = find_layer_quant("quant", path, name)
-    return int(layermax[0]), int(quantmax[0])
+    blockmax = find_layer_quant("block", path, name).split(',')
+    return int(layermax[0]), int(quantmax[0]), blockmax
 
-def gen_inout_bin_res(output, bmpdt, net, pool_num, downsample, name_list, data_list):
+def gen_inout_bin_res(bindir, bmpdt, net, pool_num, downsample, name_list, data_list):
     file_list = []
     alphalist = []
     intxt_list = []
     outtxt_list = []
     from script.run_steps import get_model_name
     name = get_model_name(net)
-    layer_max, opear_max = getresnet_max(net, name)
+    layer_max, opear_max, block_max = getresnet_max(net, name)
 
     def file_exist(name):
         if os.path.exists(f'{bmpdt}/{name}'):
             file_list.append(name)
 
-    for layerindex in range(layer_max+1):
-        for blockindex in range(getblock_max(layer_max, layerindex, name)+1):
+    for i in range(opear_max):
+        inname = f'conv{i}.input.6.txt'
+        outname = f'quant{i}.output.6.txt'
+        file_exist(inname)
+        file_exist(outname)
+
+    for layerindex in range(1, layer_max+1):
+        for blockindex in range(int(block_max[layerindex-1].strip())):
             for opearindex in range(1, opear_max+1):
-                if layerindex == 0:
-                    inname = f'conv{opearindex}.input.6.txt'
-                    outname = f'quant{opearindex}.output.6.txt'
-                    file_exist(inname)
-                    file_exist(outname)
-                    break
                 inname = f'layer{layerindex}.{blockindex}.conv{opearindex}.input.6.txt'
                 outname = f'layer{layerindex}.{blockindex}.quant{opearindex}.output.6.txt'
                 file_exist(inname)
@@ -218,8 +222,6 @@ def gen_inout_bin_res(output, bmpdt, net, pool_num, downsample, name_list, data_
     if os.path.exists(f'{bmpdt}/{fcout}'):
         file_list.append(f'{fcout}')
 
-    bindir = f'{output}/inout'
-    os.mkdir(bindir)
     if not os.path.exists(bindir):
         print(f'run os.mkdir({bindir} error)')
         return -1
@@ -277,11 +279,22 @@ def gen_inout_bin_res(output, bmpdt, net, pool_num, downsample, name_list, data_
         j += 1
         in_q = out_q
 
+def get_layernum_to_type(logpath):
+    num_type = [[]]
+    with open(logpath, 'r') as fd:
+        for line in fd:
+            line.strip()
+            if "layer type:" in line:
+                layer_dec = line[line.find("layer type:"):line.find("form layer_num")]
+                layer_num = line.split(' ',1)[0].split(':',1)[1].strip()
+                num_type.append([layer_num, layer_dec.strip()])
+    return num_type
+
 def write_tile_inst(inst_256, insts):
     for i in range(len(insts)):
         for j in range(len(insts[i])):
-            # if insts[i][j][1] != None:
             inst_256 = '{}{}'.format(inst_256, insts[i][j][1])
+
     return inst_256
 
 def fillings(c, cnt):
@@ -290,7 +303,10 @@ def fillings(c, cnt):
         inst_zero = '{}{}'.format(inst_zero, c)
     return inst_zero
 
-def write_insts(fw, tile_cnt, insts):
+def write_inst(fw, tile_cnt, insts, wetbit):
+    cnt = 0
+    inst_name = ""
+
     for i in range(tile_cnt):
         fmain.write(f'write_insts {insts[i][0]}...\n')
         for j in range(1, len(insts[i])):
@@ -306,16 +322,12 @@ def write_insts(fw, tile_cnt, insts):
             inst_256 = fillings('0', cnt)
             inst_256 = write_tile_inst(inst_256, insts[i][j])
 
-            # resnet测试使用，vggnet inst本来就是256bit
-            for k in range(BUS_WIDTH * 8 - len(inst_256)):
-                inst_256 = '{}{}'.format(inst_256, '0')
-
-            for k in range(int(BUS_WIDTH*8/4)):
-                dec = int(inst_256[k*4:(k+1)*4], 2)
+            for k in range(int(256/wetbit)):
+                dec = int(inst_256[k*wetbit:(k+1)*wetbit], 2)
                 fw.write(st.pack('B', dec))
             fmain.write(f'{insts[i][0]} {inst_name} write data success\n')
 
-def write_datas(data_locate, fw):
+def write_data(data_locate, fw):
     for i in range(len(data_locate)):
         if i == 0:
             fmain.write(f'write_datas show data_locate: {data_locate[i]} detail\n')
@@ -324,3 +336,44 @@ def write_datas(data_locate, fw):
             for k in range(len(data_locate[i][j])):
                 ints = int(data_locate[i][j][k], 16)
                 fw.write(st.pack('B', ints))
+
+def write_conf(num_type, actbit, wetbit, chipid, lenreal, fconf, net, binsize):
+    cnts = num_type[0]
+    type = num_type[1].split(':')[1]
+
+    if actbit == 16:
+        actbit = "01"
+    elif actbit == 8:
+        actbit = "00"
+    elif actbit == 4:
+        actbit = "10"
+    else:
+        actbit = "11"
+
+    if wetbit == 8:
+        wetbit = '0'
+    elif wetbit == 4:
+        wetbit = '1'
+
+    lenreal = '{:012b}'.format(lenreal-1)
+    lenread = '{:012b}'.format(binsize-1)
+    chipid = '{:02b}'.format(chipid)
+
+    adwrap(fconf, f'{net} layer information:')
+    adwrap(fconf, f'layer num        :  {cnts}')
+    adwrap(fconf, f'layer type       :  {type}\n')
+
+    adwrap(fconf, f'0x09 register value:')
+    adwrap(fconf, f'act_bit          :   {actbit}')
+    adwrap(fconf, f'weight_bit       :   {wetbit}')
+    adwrap(fconf, f'inst_len_read    :   {lenread}')
+    adwrap(fconf, f'inst_len_real    :   {lenreal}')
+    adwrap(fconf, f'chiplet_id       :   {chipid}\n')
+
+    adwrap(fconf, f'all files path:')
+    if "pool" not in type:
+        adwrap(fconf, f'act0   bin       :   layer{cnts}_input_act0_file.bin')
+        adwrap(fconf, f'output bin       :   layer{cnts}_output_file.bin')
+        adwrap(fconf, f'weight bin       :   layer{cnts}_data.bin')
+    adwrap(fconf, f'insts  bin       :   layer{cnts}_inst.bin')
+    adwrap(fconf, f'confs  txt       :   config_{cnts}.txt')

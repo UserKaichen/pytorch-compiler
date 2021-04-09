@@ -146,9 +146,9 @@ if __name__ == '__main__':
     return code: 
                 None
     """
-    model = resnet18()
-    #model = resnet34()
-    #model = resnet50()
+    # model = resnet18()
+    # model = resnet34()
+    model = resnet50()
     example_input = torch.rand(1, 3, 224, 224)
     module = torch.jit.trace(model, example_input)
     module._c._fun_compile()

@@ -8,7 +8,7 @@ div_size = 8
 dram_base = 0
 ADDRBLOCK = 0
 CALCULATE = 0
-chiplet_num = 0
+chiplet_id = 0
 ALIGN_WIDTH = 64
 
 datas_locate = ["", []]
@@ -23,16 +23,18 @@ netpath = 0
 layer_cnts = 0
 fmain = logpath = 0
 
-def send_calcuaddrvar(fw, log, net, cnt):
+def send_calcuaddrvar(fw, log, net, cnt, chip_id):
     global fmain
     global logpath
     global netpath 
     global layer_cnts
+    global chiplet_id
 
     fmain = fw
     logpath = log
     netpath = net
     layer_cnts = cnt
+    chiplet_id = chip_id
 
 def align(address, factor):
     if address % factor == 0:
@@ -123,10 +125,10 @@ def chip_relocate84(layer_locate, outchl, C):
         # fmain.write(f'chip_relocate84 {BUS_WIDTH*2} bn_locate:{len(bn_locate)} layer_locate[{end+BUS_WIDTH*x}:{end+(x+2)*BUS_WIDTH-1}]={bn_locate}\n')
         weight_locate = layer_locate[end + (x + 2) * BUS_WIDTH:end + weight_width * 2 + (x + 2) * BUS_WIDTH]
         # fmain.write(f'chip_relocate84 {weight_width*2} weight_locate:{len(weight_locate)} layer_locate[{end+(x+2)*BUS_WIDTH}:{end+weight_width*2+(x+2)*BUS_WIDTH-1}]\n')
-        index = int(len(weight_locate) / (2 ** chiplet_num))
+        index = int(len(weight_locate) / (2 ** chiplet_id))
         weight_relocate = []  # 重排weight数据
         for i in range(index):
-            for j in range(2 ** chiplet_num):
+            for j in range(2 ** chiplet_id):
                 weight_relocate.append(weight_locate[i + index * j])
         Rearrange_locate += bn_locate + weight_relocate
         end += weight_width * 2 + BUS_WIDTH
@@ -148,10 +150,10 @@ def relocate(layer_locate, outchl, C, H, W):
         # fmain.write(f'relocate {BUS_WIDTH} bn_locate:{len(bn_locate)} layer_locate[{end+BUS_WIDTH*x}:{end+(x+1)*BUS_WIDTH-1}]={bn_locate}\n')
         weight_locate = layer_locate[end + (x + 1) * BUS_WIDTH:end + weight_width + (x + 1) * BUS_WIDTH]
         # fmain.write(f'relocate {weight_width} weight_locate:{len(weight_locate)} layer_locate[{end+(x+1)*BUS_WIDTH}:{end+weight_width+(x+1)*BUS_WIDTH-1}]\n')
-        index = int(len(weight_locate) / (2 ** chiplet_num))
+        index = int(len(weight_locate) / (2 ** chiplet_id))
         weight_relocate = []  # 重排weight数据
         for i in range(index):
-            for j in range(2 ** chiplet_num):
+            for j in range(2 ** chiplet_id):
                 weight_relocate.append(weight_locate[i + index * j])
         Rearrange_locate += bn_locate + weight_relocate
         end += weight_width
@@ -167,11 +169,9 @@ def fc_relocate88(layer_locate, W, outchl):
     for x in range(outchl):  # outchannel组bn+weight
         # 每一组outchannel的数据：bn数据+weight数据
         bn_locate = layer_locate[end + BUS_WIDTH * x:end + (x + 1) * BUS_WIDTH]
-        fmain.write(
-            f'bn_k&_blocate:{len(bn_locate)} layer_locate[{end+BUS_WIDTH*x}:{end+(x+1)*BUS_WIDTH-1}]={bn_locate}\n')
+        # fmain.write(f'bn_k&_blocate:{len(bn_locate)} layer_locate[{end+BUS_WIDTH*x}:{end+(x+1)*BUS_WIDTH-1}]={bn_locate}\n')
         weight_locate = layer_locate[end + (x + 1) * BUS_WIDTH:end + W + (x + 1) * BUS_WIDTH]
-        fmain.write(
-            f'weight_locate:{len(weight_locate)} layer_locate[{end+(x+1)*BUS_WIDTH}:{end+W+(x+1)*BUS_WIDTH-1}]={weight_locate}\n')
+        # fmain.write(f'weight_locate:{len(weight_locate)} layer_locate[{end+(x+1)*BUS_WIDTH}:{end+W+(x+1)*BUS_WIDTH-1}]={weight_locate}\n')
 
         weight_relocate = []  # 重排weight数据
         for i in range(int(len(weight_locate)/(4 * 4))):
@@ -244,12 +244,15 @@ def get_layer_num(layer_name):
             if fc_flag:
                 if line.startswith("layer_num:") and layer_name in line:
                     return (int(line.split(" ")[0].split(":")[1]))
-            elif layer_name in line:
+            elif layer_name in line or "AdaptAvgPool" in line:
                 if line.startswith("layer_num:"):
                     poolname = line.split(":", 5)[2].split(" ")[0]
+                    poolcnts = int(line.split(" ")[0].split(":")[1])
+                    if "AdaptAvgPool" in poolname:
+                        pool_num.append(poolcnts)
                     if "pool" not in poolname:
                         continue
-                    pool_num.append(int(line.split(" ")[0].split(":")[1]))
+                    pool_num.append(poolcnts)
             elif "downsample" in line and fc_flag == False:
                 downsample.append(int(line.split(" ")[0].split(":")[1]))
     if fc_flag:
@@ -293,26 +296,28 @@ def weight_addr(name_list, data_list, active_bit, weight_bit):
     return code:
                 None
     """
+    bn_bias = []
     k = scale = 0
+    bn_weight = []
     fc_flag = False
-    word_address = 0
+    running_var = []
     weight_bn_k = []
     weight_bn_b = []
     weight_data = []
     global ADDRBLOCK
+    global BUS_WIDTH
+    word_address = 0
     start = ADDRBLOCK
+    running_mean = []
     layer_locate = []
     N = C = H = W = 0
     global datas_locate
     global layers_wet_addr
     layer_cnt = fc_cnt = 0
-    running_mean = []
-    running_var = []
-    bn_weight = []
-    bn_bias = []
+    BUS_WIDTH = int(256 / weight_bit)
 
     poollist,downsample = get_layer_num("pool")
-    fmain.write(f'weight_addr start:{ADDRBLOCK} bus_addr:{bus_address()} chiplet:{2**chiplet_num}\n')
+    fmain.write(f'weight_addr start:{ADDRBLOCK} bus_addr:{bus_address()} chiplet:{2**chiplet_id}\n')
     for i in range(len(name_list)):
         name = name_list[i]
         data = data_list[i]
@@ -403,7 +408,7 @@ def weight_addr(name_list, data_list, active_bit, weight_bit):
             if active_bit == 16 or active_bit == 4:  # weight 16*8 4*4不重排
                 pass
             elif fc_flag == False:  # active_bit=8 conv weight重排
-                if chiplet_num:
+                if chiplet_id:
                     fmain.write(f'{layer_name} relocate conv\'s weight...\n')
                     layer_locate = relocate(layer_locate, N, C, H, W)
                     # test_relocate(layer_locate, N, C, H, W)
@@ -413,7 +418,7 @@ def weight_addr(name_list, data_list, active_bit, weight_bit):
                 elif weight_bit == 4:  # fc weight 8*4重排
                     layer_locate = fc_relocate84(layer_locate, W, H)
                     test_chip_relocate84(layer_locate, W, H)
-                if chiplet_num:
+                if chiplet_id:
                     fmain.write(f'{layer_name} relocate fc\'s weight...\n')
                     if weight_bit == 8:  # chiplet mode fc weight 8*8重排
                         layer_locate = relocate(layer_locate, W, H, 1, 1)
@@ -481,7 +486,7 @@ def get_out_pool_CHW(layer_num):
         C = find_count(layer_num, "in_channels:")
         H = find_count(layer_num, "feature_map_size_y:")
         W = find_count(layer_num, "feature_map_size_x:")
-    elif "AdaptAvgpool" in layer_type:
+    elif "AdaptAvgPool" in layer_type:
         C = find_count(layer_num - 1, "out_channels:")
         H = find_count(layer_num, "output_size_x:")
         W = find_count(layer_num, "output_size_y:")
@@ -517,7 +522,7 @@ def get_out_CHW(layer_num):
         conv_out_H = find_count(layer_num, "feature_map_size_y:")
         conv_out_W = find_count(layer_num, "feature_map_size_x:")
         return conv_out_C, conv_out_H, conv_out_W
-    elif "pool" in layer_type or "AdaptAvgool" in layer_type:
+    elif "pool" in layer_type or "AdaptAvgPool" in layer_type:
         return get_out_pool_CHW(layer_num)
     elif "fc" in layer_type:
         return get_out_fc_CHW(layer_num)

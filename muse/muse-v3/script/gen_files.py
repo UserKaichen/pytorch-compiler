@@ -39,7 +39,7 @@ def gen_fpga(filepath):
     cmd_list = ["rm -rf con*txt cfg*txt *bn* *bias* *alpha* *weight* *input* *output* \
                   *k* data_for_fpga",
                 f'cp -af {confpath}/* {ptdtpath}/* {bmpdtpath}/* imagenet/',
-                "python ../input/config_gen_file.py -d ../imagenet/ -n imagenet_img6 -f > ../.debug/genfile.log",
+                "python3 ../input/config_gen_file.py -d ../imagenet/ -n imagenet_img6 -f > ../.debug/genfile.log",
                 f'mv {filepath}/data_for_fpga {outputpath}']
 
     for i in range(len(cmd_list)):
@@ -105,7 +105,7 @@ def deal_fc_k(vgglog):
             write_fc_k.join()
         fmain.write(f'write {data_list[i].strip()} to {fc_k_list[i]} file {fc_channel[i]} times success\n')
 
-def gen_bmp(vgglog):
+def gen_bmp(layercnt, vgglog):
     """
     description:
                 Generate model files
@@ -127,13 +127,15 @@ def gen_bmp(vgglog):
         print(f'Unknown {ptpath}')
         return 1
 
-    cmd_list = [f'python3 input/inout_print.py {net} input/im6.bmp {ptpath} {bmpdtpath} > .debug/genbmp.log']
+    cmd_list = [f'python3 input/inout_print.py {net} imagenet/im6.bmp {ptpath} {bmpdtpath} > .debug/genbmp.log']
 
     for i in range(len(cmd_list)):
         os.system(cmd_list[i])
 
-    #deal_fc_k(vgglog)
-    # Muse-v2 interface, v3 is not used.
+    if layercnt > 1 and "resnet" not in net:
+        # Muse-v2 interface, v3 is not used.
+        deal_fc_k(vgglog)
+
     prints("run gen_bmp successfully")
 
 def align(address, factor):

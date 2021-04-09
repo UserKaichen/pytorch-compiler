@@ -38,14 +38,9 @@ def clean_ups(cleanlist, mainpwd, wr_flag, info, debug):
         output = cleanlist[i]
         if os.path.exists(output):
             if os.path.isdir(output):
-                if output == "imagenet":
-                    os.chdir(output)
-                    os.system("rm -rf con*txt cfg*txt *bn* *bias* \
-                    *alpha* *weight* *input* *output* *k* data_for_fpga")
-                    os.chdir("..")
-                    continue
-                elif output == "input" or output == "script" \
-                        or output == ".debug":
+                if output == "input" or output == "script" \
+                     or output == ".debug" or output == "nnbaton"\
+                        or output == "imagenet":
                     continue
                 shutil.rmtree(output)
             elif output == info.rsplit("/",1)[1].strip():
@@ -125,7 +120,9 @@ def checkfile(filelist):
     """
     for i in range(len(filelist)):
         file = "input/"
-        if "imagenet" in filelist[i] or "ResNet" in filelist[i]:
+        if "im6.bmp" in filelist[i]:
+            file = "imagenet/"
+        elif "ResNet" in filelist[i]:
             file = ""
         name = f'{file}{filelist[i]}'
         if not os.path.exists(name) and not os.path.exists(filelist[i]):

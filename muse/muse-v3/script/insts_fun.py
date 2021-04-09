@@ -1,4 +1,8 @@
+import os
+import csv
+import shutil
 import struct as st
+from script.inout_bin import find_layer_quant
 from script.calcu_addr import get_out_CHW, index_to_address, get_fstin_CHW
 
 # nnbaton参数
@@ -151,25 +155,28 @@ def get_act_tile_ver(layer_num, tile_num):
 '''
 def get_act_tile_chl(layer_num):
     # 8bit模式
-    input_channel = find_count(layer_num, "in_channels:")
-    if input_channel != None:
-        return '{:012b}'.format(int(align(input_channel, 16) / 16))
-    else:
-        return return_value(12)
+    if act_bit == 8:
+        input_channel = find_count(layer_num, "in_channels:")
+        if input_channel != None:
+            return '{:012b}'.format(int(align(input_channel, 16) / 16) - 1)
+        else:
+            return return_value(12)
 
     # 16bit模式
-    input_channel = find_count(layer_num, "in_channels:")
-    if input_channel != None:
-        return '{:012b}'.format(int(align(input_channel, 8) / 8))
-    else:
-        return return_value(12)
+    elif act_bit == 16:
+        input_channel = find_count(layer_num, "in_channels:")
+        if input_channel != None:
+            return '{:012b}'.format(int(align(input_channel, 8) / 8) - 1)
+        else:
+            return return_value(12)
 
     # 4bit模式
-    input_channel = find_count(layer_num, "in_channels:")
-    if input_channel != None:
-        return '{:012b}'.format(int(align(input_channel, 16) / 16))
-    else:
-        return return_value(12)
+    elif act_bit == 4:
+        input_channel = find_count(layer_num, "in_channels:")
+        if input_channel != None:
+            return '{:012b}'.format(int(align(input_channel, 16) / 16) - 1)
+        else:
+            return return_value(12)
 
 '''
 获取act tile的多少bit为一组，第一层为64bit，其它层为128bit
@@ -179,6 +186,17 @@ def get_act_tile_str(layer_num):
         return '{:01b}'.format(0b1)
     else:
         return '{:01b}'.format(0b0)
+
+'''
+获取act tile向下游切换的ping pang新号的数据量大小，相当于input的sub_tile大小
+'''
+def get_act_tile_sub_chl(layer_num):
+    # if "conv" in find_type(layer_num, "layer type:"):
+    #     act_subtail = get_act_subtile_hor_ver(layer_num)
+    #     return '{:09b}'.format(act_subtail[0] * act_subtail[1])
+    # else:
+    #     return return_value(9)
+    return '{:012b}'.format(int(get_act_tile_chl(layer_num)))
 
 """
 获取act sub_tile水平和垂直方向大小
@@ -192,27 +210,20 @@ def get_act_subtile_hor_ver(layer_num):
     out_tail_hor = int(out_W / nnbaton_X2 / nnbaton_Xc)
     out_tail_ver = int(out_H / nnbaton_Yp / nnbaton_Y2 / nnbaton_Yc)
 
-    act_tail_hor = out_tail_hor * stride - 1 + kernel_size
-    act_tail_ver = out_tail_ver * stride - 1 + kernel_size
+    act_tail_hor = out_tail_hor * stride
+    act_tail_ver = out_tail_ver * stride
     return act_tail_hor, act_tail_ver
-
-'''
-获取act tile向下游切换的ping pang新号的数据量大小，相当于input的sub_tile大小
-'''
-def get_act_tile_sub_chl(layer_num):
-    # if "conv" in find_type(layer_num, "layer type:"):
-    #     act_subtail = get_act_subtile_hor_ver(layer_num)
-    #     return '{:09b}'.format(act_subtail[0] * act_subtail[1])
-    # else:
-    #     return return_value(9)
-    return '{:012b}'.format(int(get_act_tile_chl(layer_num)))
 
 '''
 获取sub_core处理tile的水平方向上大小
 '''
 def get_sub_tile_hor(layer_num):
-    if "conv" in find_type(layer_num, "layer type:"):
+    layer_type = find_type(layer_num, "layer type:")
+    if "conv" in layer_type:
         sub_tile_hor = get_act_subtile_hor_ver(layer_num)[0]
+        return '{:07b}'.format(sub_tile_hor - 1)
+    elif "pool" in layer_type:
+        sub_tile_hor = find_pool_tile(layer_num)[2]
         return '{:07b}'.format(sub_tile_hor - 1)
     else:
         return return_value(7)
@@ -221,9 +232,13 @@ def get_sub_tile_hor(layer_num):
 获取sub_core处理tile的垂直方向上大小
 '''
 def get_sub_tile_ver(layer_num):
-    if "conv" in find_type(layer_num, "layer type:"):
+    layer_type = find_type(layer_num, "layer type:")
+    if "conv" in layer_type:
         sub_tile_ver = get_act_subtile_hor_ver(layer_num)[1]
         return '{:07b}'.format(sub_tile_ver - 1)
+    elif "pool" in layer_type:
+        sub_tile_hor = find_pool_tile(layer_num)[1]
+        return '{:07b}'.format(sub_tile_hor - 1)
     else:
         return return_value(7)
 
@@ -251,8 +266,8 @@ def get_act_minitile_hor_ver(layer_num):
     out_tail_hor = int(out_W / nnbaton_X2 / nnbaton_Xc / nnbaton_X1)
     out_tail_ver = int(out_H / nnbaton_Yp / nnbaton_Y2 / nnbaton_Yc / nnbaton_Y1)
 
-    act_tail_hor = out_tail_hor * stride - 1 + kernel_size
-    act_tail_ver = out_tail_ver * stride - 1 + kernel_size
+    act_tail_hor = out_tail_hor * stride
+    act_tail_ver = out_tail_ver * stride
     return act_tail_hor, act_tail_ver
 
 '''
@@ -262,9 +277,6 @@ def get_Mini_tile_hor(layer_num):
     layertype = find_type(layer_num, "layer type:")
     if "conv" in layertype:
         mini_tile_hor = get_act_minitile_hor_ver(layer_num)[0]
-        return '{:05b}'.format(mini_tile_hor - 1)
-    elif "pool" in layertype:
-        mini_tile_hor = find_count(layer_num, "pool_size:")
         return '{:05b}'.format(mini_tile_hor - 1)
     else:
         return return_value(5)
@@ -277,9 +289,6 @@ def get_Mini_tile_ver(layer_num):
     if "conv" in layertype:
         mini_tile_ver = get_act_minitile_hor_ver(layer_num)[1]
         return '{:05b}'.format(mini_tile_ver - 1)
-    elif "pool" in layertype:
-        mini_tile_hor = find_count(layer_num, "pool_size:")
-        return '{:05b}'.format(mini_tile_hor - 1)
     else:
         return return_value(5)
 
@@ -317,12 +326,34 @@ def get_Out_mini_tile_ver(layer_num):
         return return_value(7)
 
 '''
+寻找pool层的tile大小
+'''
+def find_pool_tile(layer_num):
+    # 获取pool层输出的K,H,W
+    pool_output = get_out_pool_CHW(layer_num)
+    pool_H = pool_output[1]
+    pool_W = pool_output[2]
+
+    # for循环中找到最大的一组数据满足 H*W*act_bit*16<= 20*18*128*8
+    for num in range(1, 24):
+        # 注意切分后的tile可以被总长度整除
+        if pool_H % num == 0 and pool_W % num == 0:
+            pool_tile_H = pool_H // num
+            pool_tile_W = pool_W // num
+            if pool_tile_H * pool_tile_W * act_bit * 16 <= 20*18*128*8:
+                return num, pool_tile_H, pool_tile_W
+
+'''
 获取output tile的水平方向大小
 '''
 def get_Out_tile_hor(layer_num):
-    if "conv" in find_type(layer_num, "layer type:"):
+    layer_type = find_type(layer_num, "layer type:")
+    if "conv" in layer_type:
         out_W = find_count(layer_num, "feature_map_size_x:")
         out_tile_hor = int(out_W / nnbaton_X2)
+        return '{:07b}'.format(out_tile_hor - 1)
+    elif "pool" in layer_type:
+        out_tile_hor = find_pool_tile(layer_num)[2]
         return '{:07b}'.format(out_tile_hor - 1)
     else:
         return return_value(7)
@@ -331,10 +362,14 @@ def get_Out_tile_hor(layer_num):
 获取output tile的垂直方向大小
 '''
 def get_Out_tile_ver(layer_num):
-    if "conv" in find_type(layer_num, "layer type:"):
+    layer_type = find_type(layer_num, "layer type:")
+    if "conv" in layer_type:
         out_H = find_count(layer_num, "feature_map_size_y:")
         out_tail_ver = int(out_H / nnbaton_Yp / nnbaton_Y2)
         return '{:07b}'.format(out_tail_ver - 1)
+    elif "pool" in layer_type:
+        out_tile_ver = find_pool_tile(layer_num)[1]
+        return '{:07b}'.format(out_tile_ver - 1)
     else:
         return return_value(7)
 
@@ -433,7 +468,10 @@ def get_Chiplet_tile_size(layer_num):
 FC的kernel_size为1*1
 '''
 def get_Kernel_num(layer_num):
-    if "fc" in find_type(layer_num, "layer type:"):
+    layer_type = find_type(layer_num, "layer type:")
+    if "AdaptAvgPool" in layer_type:
+        return return_value(8)
+    elif "fc" in layer_type:
         kernel_num = 1
         return '{:08b}'.format(kernel_num - 1)
     else:
@@ -484,19 +522,20 @@ def get_Kernel_str(layer_num):
 获取反卷积在水平方向上的跨度
 '''
 def get_deconv_hor_str(layer_num):
-    return '{:02b}'.format(0)
+    return return_value(2)
 
 '''
 获取反卷积在垂直方向上的跨度
 '''
 def get_deconv_ver_str(layer_num):
-    return '{:02b}'.format(0)
+    return return_value(2)
 
 '''
 获取反卷空洞卷积，插入零的个数
+暂时先返回1
 '''
 def get_Dilation_rate(layer_num):
-    return '{:03b}'.format(0)
+    return '{:03b}'.format(1)
 
 '''
 取整方式选择
@@ -577,7 +616,7 @@ def get_fc_mode_en(layer_num):
     if "fc" in find_type(layer_num, "layer type:"):
         return '{:01b}'.format(1)
     else:
-        return 0
+        return return_value(1)
 
 #################  inst_01  #################
 '''
@@ -666,11 +705,13 @@ def get_Padding_mode(layer_num, tile_num):
 获取当前指令中，padding的数量
 '''
 def get_Padding_num(layer_num):
+    if find_count(layer_num, "padding_num:") == 0:
+        return return_value(4)
     if "conv" in find_type(layer_num, "layer type:"):
         padding_num = find_count(layer_num, "padding_num:")
         return '{:04b}'.format(padding_num - 1)
     else:
-        return '{:04b}'.format(0)
+        return return_value(4)
 
 '''
 获取当前指令中，每块L1数据需要重复发送的次数
@@ -690,6 +731,9 @@ def get_act_inst_bypass():
 def get_weight_inst_bypass():
     return return_value(1)
 
+'''
+获取pool层output的c h w大小 
+'''
 def get_out_pool_CHW(layer_num):
     C = H = W = 0
     layer_type = find_type(layer_num, "layer type:")
@@ -699,9 +743,9 @@ def get_out_pool_CHW(layer_num):
         W = find_count(layer_num, "feature_map_size_x:")
     elif "fc" in layer_type:
         C, H, W = get_out_pool_CHW(layer_num - 1)
-    elif "pool" in layer_type or "Pool" in layer_type:
+    elif "pool" in layer_type:
         prev_layer_type = find_type(layer_num - 1, "layer type:")
-        if "pool" in prev_layer_type or "Pool" in prev_layer_type:
+        if "pool" in prev_layer_type:
             C, pool_H, pool_W = get_out_pool_CHW(layer_num - 1)
             pool_kernel_size_x = find_count(layer_num, "kernel_size_x:")
             pool_kernel_size_y = find_count(layer_num, "kernel_size_y:")
@@ -715,6 +759,10 @@ def get_out_pool_CHW(layer_num):
             C = find_count(layer_num - 1, "out_channels:")
             H = align(int(feature_map_y / kernel_size_y), 2)
             W = align(int(feature_map_x / kernel_size_x), 2)
+    elif "AdaptAvgPool" in layer_type:
+        C = get_out_pool_CHW(layer_num - 1)[0]
+        H = find_count(layer_num, "kernel_size_x")
+        W = find_count(layer_num, "kernel_size_x")
 
     return C, H, W
 
@@ -727,7 +775,7 @@ def get_act_chl_one_inst_real(layer_num):
         input_channel = find_count(layer_num, "in_channels:")
         act_chl_one_inst_real = int(input_channel / (64 / act_bit))
         return '{:012b}'.format(act_chl_one_inst_real)
-    elif "pool" in layer_type or "Pool" in layer_type:
+    elif "pool" in layer_type or "AdaptAvgPool" in layer_type:
         input_channel = get_out_pool_CHW(layer_num - 1)[0]
         act_chl_one_inst_real = int(input_channel / (64 / act_bit))
         return '{:012b}'.format(act_chl_one_inst_real)
@@ -750,7 +798,7 @@ def get_act_chl_one_inst(layer_num):
         input_channel = align(input_channel, int(128 / act_bit))
         act_chl_one_inst = int(input_channel / (64 / act_bit))
         return '{:012b}'.format(act_chl_one_inst)
-    elif "pool" in layer_type or "Pool" in layer_type:
+    elif "pool" in layer_type or "AdaptAvgPool" in layer_type:
         input_channel = get_out_pool_CHW(layer_num - 1)[0]
         input_channel = align(input_channel, int(128 / act_bit))
         act_chl_one_inst = int(input_channel / (64 / act_bit))
@@ -836,8 +884,13 @@ def get_act_updata_n(layer_num):
     else:
         return '{:01b}'.format(1)
 
+'''
+表示当前指令是使用ping RAM中的数据还是pong RAM中的数据；
+'''
 def get_LLC_a_ping_pong(layer_num):
-    if "conv" in find_type(layer_num, "layer type:"):
+    if layer_num == 1:
+        return '{:01b}'.format(0)
+    elif "conv" in find_type(layer_num, "layer type:"):
         if nnbaton_divcase % 2 == 1:
             # nnbaton_divcase为1、3时，先走channel方向，即需要更新activation
             return '{:01b}'.format(0)
@@ -846,7 +899,6 @@ def get_LLC_a_ping_pong(layer_num):
             return '{:01b}'.format(1)
     else:
         return '{:01b}'.format(1)
-
 
 '''
 一行act在DDR中连续存储的大小（一行数据的大小）
@@ -861,9 +913,9 @@ def get_act_str_line(layer_num):
             input_W = find_count(layer_num, "feature_map_size_x:")
         elif "conv" in prev_layer_type:
             input_W = find_count(layer_num - 1, "feature_map_size_x:")
-        elif "pool" in prev_layer_type or "Pool" in prev_layer_type:
+        elif "pool" in prev_layer_type:
             input_W = get_out_pool_CHW(layer_num - 1)[2]
-    elif "pool" in layer_type or "Pool" in layer_type:
+    elif "pool" in layer_type or "AdaptAvgPool" in layer_type:
         input_W = get_out_pool_CHW(layer_num - 1)[2]
     elif "fc" in layer_type:
         input_W = find_count(layer_num, "in_features_x:")
@@ -885,8 +937,10 @@ def get_act_str_chl(layer_num):
         else:
             input_W = find_count(layer_num - 1, "feature_map_size_x:")
 
-    elif "Pool" in layer_type or "pool" in layer_type:
-        return return_value(32)
+    elif "pool" in layer_type or "AdaptAvgPool" in layer_type:
+        pool_input = get_out_CHW(layer_num - 1)
+        input_C = pool_input[0]
+        input_W = pool_input[2]
 
     elif "fc" in layer_type:
         input_W = input_C = find_count(layer_num, "in_features_x:")
@@ -909,9 +963,13 @@ def get_weight_updata_n(layer_num):
     else:
         return '{:01b}'.format(1)
 
-
+'''
+表示当前指令是使用ping RAM中的数据还是pong RAM中的数据；0：ping，1：pang
+'''
 def get_LLC_w_ping_pong(layer_num):
-    if "conv" in find_type(layer_num, "layer type:"):
+    if layer_num == 1:
+        return '{:01b}'.format(0)
+    elif "conv" in find_type(layer_num, "layer type:"):
         if nnbaton_divcase % 2 == 1:
             # nnbaton_divcase为1、3时，先走channel方向，即需要更新activation
             return '{:01b}'.format(1)
@@ -985,6 +1043,7 @@ def get_act_addr(layer_num, tile_num, act_start):
         output_tile_C = int(output_C / nnbaton_Kp / nnbaton_K2)
         output_tile_H = int(output_H / nnbaton_Yp / nnbaton_Y2)
         output_tile_W = int(output_W / nnbaton_X2)
+        input_C = input_H = input_W = 0
 
         if layer_num == 1:
             input = get_fstin_CHW(netpath)
@@ -1030,37 +1089,129 @@ def get_weight_addr(layer_num):
 def get_Run_mode(layer_num):
     return return_value(2)
 
-def get_nnbaton(layer_num):
-    if layer_num == 0:
-        return 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-    if layer_num == 1:
-        return 2, 2, 2, 7, 1, 2, 1, 4, 1, 4, 2, 1, 8, 8, 8, 1
-    elif layer_num == 2:
-        return 2, 1, 1, 7, 7, 1, 1, 4, 4, 1, 2, 8, 8, 8, 8, 4
-    elif layer_num == 4:
-        return 1, 1, 1, 7, 7, 1, 4, 1, 2, 2, 2, 2, 8, 8, 8, 1
-    elif layer_num == 5:
-        return 1, 1, 1, 7, 7, 1, 4, 1, 2, 2, 2, 4, 8, 8, 8, 4
-    elif layer_num == 7:
-        return 1, 1, 1, 4, 7, 1, 4, 1, 4, 1, 2, 4, 8, 8, 8, 4
-    elif layer_num == 8:
-        return 1, 1, 1, 4, 7, 1, 4, 1, 4, 1, 2, 8, 8, 8, 8, 1
-    elif layer_num == 9:
-        return 1, 1, 1, 4, 7, 1, 4, 1, 4, 1, 2, 8, 8, 8, 8, 4
-    elif layer_num == 11:
-        return 1, 1, 1, 2, 4, 2, 4, 1, 4, 1, 2, 8, 8, 8, 8, 2
-    elif layer_num == 12:
-        return 1, 1, 4, 2, 1, 2, 4, 1, 1, 4, 2, 16, 8, 8, 8, 4
-    elif layer_num == 13:
-        return 1, 1, 4, 2, 1, 2, 4, 1, 1, 4, 2, 16, 8, 8, 8, 1
-    elif layer_num == 15:
-        return 1, 1, 2, 1, 1, 2, 4, 1, 2, 2, 2, 16, 8, 8, 8, 4
-    elif layer_num == 16:
-        return 1, 1, 2, 1, 1, 2, 4, 1, 2, 2, 2, 16, 8, 8, 8, 3
-    elif layer_num == 17:
-        return 1, 1, 2, 1, 1, 2, 4, 1, 2, 2, 2, 16, 8, 8, 8, 1
-    else: # pool fc or undefine return code
-        return 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0
+def get_nnbaton(num_type):
+    net = ""
+    size = ""
+    flag = True
+    nnbaton = []
+    netname = logpath.rsplit('/', 1)[1].split('.')[0]
+
+    if netname == "vggnet16":
+        net = "VGG"
+        size = "224"
+        flag = False
+    elif netname == "resnet50":
+        net = "ResNet"
+        size = "512"
+        resdec = ['a', 'b', 'c'] # csv:res2 & csv:res5
+        bradec = ['1', "2a", "2b", "2c"] # csv:branch description
+    elif netname == "simulator":
+        print(f'simulator get_nnbaton')
+        return [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]
+
+    os.chdir("nnbaton")
+    csvname = f'nnbaton/csv/sort/reuslt_{net}-{size}.csv'
+    batonlg = f'../.debug/nnbaton_{net}{size}.log'
+    run_list = ["shutil.rmtree(\'csv/raw4/output/\')",
+                "shutil.rmtree(\'csv/sort/\')",
+                "os.mkdir(\'csv/raw4/output/\')",
+                "os.mkdir(\'csv/sort/\')",
+                f'python3 main.py {net} {size} > {batonlg} 2>&1',
+                f'python3 view.py >> {batonlg} 2>&1']
+
+    for i in range(len(run_list)):
+        func = run_list[i]
+        if "python" in func:
+            os.system(func)
+        else:
+            exec(compile(func, "<string>", "exec"))
+    os.chdir("..")
+
+    X1_index = Y1_index = K1_index = 0
+    X2_index = Y2_index = K2_index = 0
+    Kc_index = Yc_index = Xc_index = 0
+    Kp_index = Yp_index = 0
+    C1_index = C0_index = 0
+    X0_index = Y0_index = 0
+    op_index = divindex = 0
+
+    with open(csvname, 'r') as my_csv:
+        reader = csv.reader(my_csv)
+        for row in reader:
+            for i in range(len(row)):
+                if row[i] == "note":
+                    op_index = i
+                elif row[i] == "X1":
+                    X1_index = i
+                elif row[i] == "Y1":
+                    Y1_index = i
+                elif row[i] == "K1":
+                    K1_index = i
+                elif row[i] == "X2":
+                    X2_index = i
+                elif row[i] == "Y2":
+                    Y2_index = i
+                elif row[i] == "K2":
+                    K2_index = i
+                elif row[i] == "Kp":
+                    Kp_index = i
+                elif row[i] == "Yp":
+                    Yp_index = i
+                elif row[i] == "Xc":
+                    Xc_index = i
+                elif row[i] == "Yc":
+                    Yc_index = i
+                elif row[i] == "Kc":
+                    Kc_index = i
+                elif row[i] == "C1":
+                    C1_index = i
+                elif row[i] == "C0":
+                    C0_index = i
+                elif row[i] == "X0":
+                    X0_index = i
+                elif row[i] == "Y0":
+                    Y0_index = i
+                elif row[i] == "reorder_case":
+                    divindex = i
+            break
+
+    for i in range(1, len(num_type)):
+        layer_type = num_type[i][1].split(':')[1].split(' ', 1)[0]
+        with open(csvname, 'r') as my_csv:
+            reader = csv.reader(my_csv)
+            for row in reader:
+                if row[op_index] == layer_type:
+                    nnbaton.append(
+                        [int(row[X1_index]), int(row[Y1_index]), int(row[K1_index]), int(row[X2_index]),
+                         int(row[Y2_index]), int(row[K2_index]), int(row[Kp_index]), int(row[Yp_index]),
+                         int(row[Kc_index]), int(row[Yc_index]), int(row[Xc_index]), int(row[C1_index]),
+                         int(row[C0_index]), int(row[X0_index]), int(row[Y0_index]), int(row[divindex])])
+    if flag:
+        layermax = int(find_layer_quant("layer", netpath, netname)[0])
+        for rescnt in range(1, layermax+1): # csv:res2~res5
+            if rescnt == 2:  # csv:res3
+                resdec = ['a', 'b', 'c', 'd']
+            elif rescnt == 3:  # csv:res4
+                resdec = ['a', 'b', 'c', 'd', 'e', 'f']
+            for j in range(len(resdec)):
+                for k in range(len(bradec)):
+                    layer_type = f'res{rescnt+1}{resdec[j]}_branch{bradec[k]}'
+                    with open(csvname, 'r') as my_csv:
+                        reader = csv.reader(my_csv)
+                        for row in reader:
+                            if row[op_index] == layer_type:
+                                nnbaton.append(
+                                    [int(row[X1_index]), int(row[Y1_index]), int(row[K1_index]), int(row[X2_index]),
+                                     int(row[Y2_index]), int(row[K2_index]), int(row[Kp_index]), int(row[Yp_index]),
+                                     int(row[Kc_index]), int(row[Yc_index]), int(row[Xc_index]), int(row[C1_index]),
+                                     int(row[C0_index]), int(row[X0_index]), int(row[Y0_index]), int(row[divindex])])
+
+    for i in range(1, len(num_type)):
+        layer_type = num_type[i][1].split(':')[1].split(' ', 1)[0]
+        if "conv" not in layer_type:
+            nnbaton.insert(i-1, [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0])
+
+    return nnbaton
 
 '''
 获取所有input块的地址
@@ -1094,9 +1245,9 @@ def get_layer_outpu_addr(layers_act_addr):
 
 
 def get_layer_inst(insts, layer_num, tile_cnt, act_start, out_start, wet_addr):
-    fmain.write(f'{act_start}\n')
+    fmain.write(f'get_layer_inst act_start:{act_start}\n')
     if len(wet_addr):
-        fmain.write(f'{wet_addr}\n')
+        fmain.write(f'get_layer_inst wet_addr:{wet_addr}\n')
 
     for i in range(1, tile_cnt + 1):
         if len(wet_addr):
@@ -1110,7 +1261,7 @@ def get_layer_inst(insts, layer_num, tile_cnt, act_start, out_start, wet_addr):
 
     return insts
 
-def refresh_nnbaton(X1, Y1, K1, X2, Y2, K2, Kp, Yp, Kc, Yc, Xc, C1, C0, X0, Y0, divcase):
+def refresh_nnbaton(nnbaton):
     global nnbaton_X1
     global nnbaton_Y1
     global nnbaton_K1
@@ -1128,22 +1279,22 @@ def refresh_nnbaton(X1, Y1, K1, X2, Y2, K2, Kp, Yp, Kc, Yc, Xc, C1, C0, X0, Y0, 
     global nnbaton_Y0
     global nnbaton_divcase
 
-    nnbaton_X1 = X1
-    nnbaton_Y1 = Y1
-    nnbaton_K1 = K1
-    nnbaton_X2 = X2
-    nnbaton_Y2 = Y2
-    nnbaton_K2 = K2
-    nnbaton_Kp = Kp
-    nnbaton_Yp = Yp
-    nnbaton_Kc = Kc
-    nnbaton_Yc = Yc
-    nnbaton_Xc = Xc
-    nnbaton_C1 = C1
-    nnbaton_C0 = C0
-    nnbaton_X0 = X0
-    nnbaton_Y0 = Y0
-    nnbaton_divcase = divcase
+    nnbaton_X1 = nnbaton[0]
+    nnbaton_Y1 = nnbaton[1]
+    nnbaton_K1 = nnbaton[2]
+    nnbaton_X2 = nnbaton[3]
+    nnbaton_Y2 = nnbaton[4]
+    nnbaton_K2 = nnbaton[5]
+    nnbaton_Kp = nnbaton[6]
+    nnbaton_Yp = nnbaton[7]
+    nnbaton_Kc = nnbaton[8]
+    nnbaton_Yc = nnbaton[9]
+    nnbaton_Xc = nnbaton[10]
+    nnbaton_C1 = nnbaton[11]
+    nnbaton_C0 = nnbaton[12]
+    nnbaton_X0 = nnbaton[14]
+    nnbaton_Y0 = nnbaton[14]
+    nnbaton_divcase = nnbaton[15]
 
 def pass_fun():
     pass
@@ -1223,43 +1374,76 @@ def get_tile_inst(layer_num, tile_num, act_start, out_start, wet_start, wet_end)
     Run_mode = get_Run_mode(layer_num)
     Inst_id_11 = get_Inst_id_11()
 
-    inst_00 = [["fc_mode_en", fc_mode_en], ["scaling_mode", scaling_mode],
-               ["Pooling_quan_code_out", Pooling_quan_code_out],
-               ["Pooling_oprands", Pooling_oprands],
-               ["pool_size", pool_size], ["pool_total_size", pool_total_size],
-               ["Pooling_quan_code_in", Pooling_quan_code_in],
-               ["pool_mode", pool_mode], ["pooling_carry_sel", pooling_carry_sel],
-               ["Dilation_rate", Dilation_rate], ["deconv_ver_str", deconv_ver_str],
-               ["deconv_hor_str", deconv_hor_str], ["Kernel_str", Kernel_str],
-               ["Kernel_height", Kernel_height], ["Kernel_width", Kernel_width],
-               ["Kernel_num", Kernel_num], ["Chiplet_tile_size", Chiplet_tile_size],
-               ["Chiplet_mode  ", Chiplet_mode], ["conv_type", conv_type],
-               ["weight_ram_output_chl_num", weight_ram_output_chl_num],
-               ["Weight_sub_size", Weight_sub_size], ["weight_total_size", weight_total_size],
-               ["Out_tile_chl", Out_tile_chl], ["Out_tile_ver", Out_tile_ver],
-               ["Out_tile_hor", Out_tile_hor], ["Out_mini_tile_ver", Out_mini_tile_ver],
-               ["Out_mini_tile_hor", Out_mini_tile_hor], ["in_chl_num", in_chl_num],
-               ["Mini_tile_ver", Mini_tile_ver], ["Mini_tile_hor", Mini_tile_hor],
-               ["out_chl_num", out_chl_num], ["sub_tile_ver", sub_tile_ver],
-               ["sub_tile_hor", sub_tile_hor], ["act_tile_sub_chl", act_tile_sub_chl],
-               ["act_tile_str", act_tile_str], ["act_tile_chl", act_tile_chl],
-               ["act_tile_ver", act_tile_ver], ["act_tile_hor", act_tile_hor],
-               ["Inst_id_00", Inst_id_00]]
-    inst_01 = [["mini_hor_num", mini_hor_num], ["mini_ver_num", mini_ver_num],
-               ["inst_invalid", inst_invalid], ["act_chl_one_inst", act_chl_one_inst],
-               ["act_sub_ch", act_sub_ch], ["act_chl_one_inst_real", act_chl_one_inst_real],
-               ["weight_inst_bypass", weight_inst_bypass], ["act_inst_bypass", act_inst_bypass],
+    inst_00 = [["Inst_id_00", Inst_id_00],
+                ["act_tile_hor", act_tile_hor],
+                ["act_tile_ver", act_tile_ver],
+                ["act_tile_chl", act_tile_chl],
+                ["act_tile_str", act_tile_str],
+                ["act_tile_sub_chl", act_tile_sub_chl],
+                ["sub_tile_hor", sub_tile_hor],
+                ["sub_tile_ver", sub_tile_ver],
+                ["out_chl_num", out_chl_num],
+                ["Mini_tile_hor", Mini_tile_hor],
+                ["Mini_tile_ver", Mini_tile_ver],
+                ["in_chl_num", in_chl_num],
+                ["Out_mini_tile_hor", Out_mini_tile_hor],
+                ["Out_mini_tile_ver", Out_mini_tile_ver],
+                ["Out_tile_hor", Out_tile_hor],
+                ["Out_tile_ver", Out_tile_ver],
+                ["Out_tile_chl", Out_tile_chl],
+                ["weight_total_size", weight_total_size],
+                ["Weight_sub_size", Weight_sub_size],
+                ["weight_ram_output_chl_num", weight_ram_output_chl_num],
+                ["conv_type", conv_type],
+                ["Chiplet_mode  ", Chiplet_mode],
+                ["Chiplet_tile_size", Chiplet_tile_size],
+                ["Kernel_num", Kernel_num],
+                ["Kernel_width", Kernel_width],
+                ["Kernel_height", Kernel_height],
+                ["Kernel_str", Kernel_str],
+                ["deconv_hor_str", deconv_hor_str],
+                ["deconv_ver_str", deconv_ver_str],
+                ["Dilation_rate", Dilation_rate],
+                ["pooling_carry_sel", pooling_carry_sel],
+                ["pool_mode", pool_mode],
+                ["Pooling_quan_code_in", Pooling_quan_code_in],
+                ["pool_total_size", pool_total_size],
+                ["pool_size", pool_size],
+                ["Pooling_oprands", Pooling_oprands],
+                ["Pooling_quan_code_out", Pooling_quan_code_out],
+                ["scaling_mode", scaling_mode],
+                ["fc_mode_en", fc_mode_en]]
+
+    inst_01 = [["Inst_id_01", Inst_id_01],
+               ["Tile_mode", Tile_mode],
+               ["tile_num", inst_tile_num],
+               ["Padding_mode", Padding_mode],
+               ["Padding_num", Padding_num],
                ["Repeat_send_num", Repeat_send_num],
-               ["Padding_num", Padding_num], ["Padding_mode", Padding_mode],
-               ["tile_num", inst_tile_num], ["Tile_mode", Tile_mode],
-               ["Inst_id_01", Inst_id_01]]
-    inst_11 = [["act_addr_element", act_addr_element], ["Out_feature_map_ver", Out_feature_map_ver],
-               ["Out_tile_stride", Out_tile_stride], ["Out_tile_start_addr", Out_tile_start_addr],
-               ["LLC_a_ping_pong", LLC_a_ping_pong], ["act_updata_n", act_updata_n],
-               ["act_str_line", act_str_line], ["act_str_chl", act_str_chl],
-               ["act_addr", act_addr], ["LLC_w_ping_pong", LLC_w_ping_pong],
-               ["weight_updata_n", weight_updata_n], ["weight_output_chl", weight_output_chl],
-               ["weight_addr", weight_addr], ["Run_mode", Run_mode],
-               ["Inst_id_11", Inst_id_11]]
+               ["act_inst_bypass", act_inst_bypass],
+               ["act_inst_bypass", act_inst_bypass],
+               ["weight_inst_bypass", weight_inst_bypass],
+               ["act_chl_one_inst_real", act_chl_one_inst_real],
+               ["act_sub_ch", act_sub_ch],
+               ["act_chl_one_inst", act_chl_one_inst],
+               ["inst_invalid", inst_invalid],
+               ["mini_ver_num", mini_ver_num],
+               ["mini_hor_num", mini_hor_num]]
+
+    inst_11 = [["Inst_id_11", Inst_id_11],
+               ["Run_mode", Run_mode],
+               ["weight_addr", weight_addr],
+               ["weight_output_chl", weight_output_chl],
+               ["weight_updata_n", weight_updata_n],
+               ["LLC_w_ping_pong", LLC_w_ping_pong],
+               ["act_addr", act_addr],
+               ["act_str_chl", act_str_chl],
+               ["act_str_line", act_str_line],
+               ["act_updata_n", act_updata_n],
+               ["LLC_a_ping_pong", LLC_a_ping_pong],
+               ["Out_tile_start_addr", Out_tile_start_addr],
+               ["Out_tile_stride", Out_tile_stride],
+               ["Out_feature_map_ver", Out_feature_map_ver],
+               ["act_addr_element", act_addr_element]]
 
     return inst_00, inst_01, inst_11
