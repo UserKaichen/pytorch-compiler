@@ -19,8 +19,10 @@ def save_params(parase, info):
         ftool.write('muse toolchains all parameter:\n')
         ftool.write(f'ptpath      =  {parase.pt_name}\n')
         ftool.write(f'netpath     =  {parase.net_name}\n')
-        ftool.write(f'confpath    =  {parase.conf_dir}\n')
-        ftool.write(f'ptdtpath    =  {parase.ptdata_dir}\n')
+        if len(parase.conf_dir):
+            ftool.write(f'confpath    =  {parase.conf_dir}\n')
+        if len(parase.ptdata_dir):
+            ftool.write(f'ptdtpath    =  {parase.ptdata_dir}\n')
         ftool.write(f'bmpdtpath   =  {parase.bmpdata_dir}\n')
         ftool.write(f'outputpath  =  {parase.output_dir}\n')
 

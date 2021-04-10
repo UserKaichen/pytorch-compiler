@@ -1112,24 +1112,30 @@ def get_nnbaton(num_type):
         bradec = ['1', "2a", "2b", "2c"] # csv:branch description
     elif netname == "simulator":
         print(f'simulator get_nnbaton')
-        return [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]
+        return [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]]
 
-    os.chdir("nnbaton")
-    csvname = f'nnbaton/csv/sort/reuslt_{net}-{size}.csv'
+    csvpath = ['sort', 'raw4/output', 'cooked4']
     batonlg = f'../.debug/nnbaton_{net}{size}.log'
-    run_list = ["shutil.rmtree(\'csv/raw4/output/\')",
-                "shutil.rmtree(\'csv/sort/\')",
-                "os.mkdir(\'csv/raw4/output/\')",
-                "os.mkdir(\'csv/sort/\')",
-                f'python3 main.py {net} {size} > {batonlg} 2>&1',
+    csvname = f'nnbaton/csv/sort/reuslt_{net}-{size}.csv'
+    run_list = [f'python3 main.py {net} {size} >{batonlg} 2>&1',
                 f'python3 view.py >> {batonlg} 2>&1']
 
+    os.chdir("nnbaton")
+
+    for i in range(len(csvpath)):
+        csvdir = f'csv/{csvpath[i]}'
+        if os.path.exists(csvdir):
+            if 'cooked4' in csvdir:
+                continue
+            else:
+                print('NN-Baton is missing the cooked4 directory')
+                print(f'Please check and try again later.')
+                exit(1)
+            shutil.rmtree(csvdir)
+        os.makedirs(csvdir)
+
     for i in range(len(run_list)):
-        func = run_list[i]
-        if "python" in func:
-            os.system(func)
-        else:
-            exec(compile(func, "<string>", "exec"))
+            os.system(run_list[i])
     os.chdir("..")
 
     X1_index = Y1_index = K1_index = 0
