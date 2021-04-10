@@ -190,7 +190,8 @@ def rand_param():
     return C, H, out_chl, ker_size, stride, padding
 
 def run_debug(runpath):
-    simulog = f'{runpath}/../simu_output/simuinfo'
+    simuout = f'{runpath}/../simu_output'
+    simulog = f'{simuout}/simuinfo'
     netpath = f'input/simulator.py'
     
     N = 1
@@ -200,8 +201,10 @@ def run_debug(runpath):
 
     logline = f'N:{N} C:{C} H:{H} W:{W} in_channels:{in_chl} out_channels:{out_chl} '
     logline = '{}{}'.format(logline, f'kernel_size:{ker_size} stride:{stride} padding:{padding}\n')
- 
+
     if not os.path.exists(simulog):
+        if not os.path.exists(simuout):
+            os.makedirs(simuout)
         with open(simulog, 'w') as fw:
             fw.write(logline)
     else:
