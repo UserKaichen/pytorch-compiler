@@ -1127,11 +1127,12 @@ def get_nnbaton(num_type):
         if os.path.exists(csvdir):
             if 'cooked4' in csvdir:
                 continue
-            else:
+            shutil.rmtree(csvdir)
+        else:
+            if 'cooked4' in csvdir:
                 print('NN-Baton is missing the cooked4 directory')
                 print(f'Please check and try again later.')
                 exit(1)
-            shutil.rmtree(csvdir)
         os.makedirs(csvdir)
 
     for i in range(len(run_list)):
